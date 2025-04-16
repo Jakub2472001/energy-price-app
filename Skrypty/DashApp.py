@@ -1,4 +1,4 @@
-from dash import html, Input, Output,State, dash_table, dcc
+from dash import html, Input, Output, State, dash_table, dcc
 import config as cfg
 import numpy as np
 import dash_bootstrap_components as dbc
@@ -7,6 +7,7 @@ from LoadData import podaz_df
 from DashPlots import plot_podaz_popyt, annotate_plot
 from Main import app
 
+# Definicja tabeli magazynów
 magazyny_table = html.Div([dash_table.DataTable(
     id='datatable-magazyny',
     columns=[{'name': i, 'id': i, 'deletable': True} for i in
@@ -38,9 +39,11 @@ magazyny_table = html.Div([dash_table.DataTable(
     html.Link(rel='stylesheet', href='/assets/style.css')])
 
 selected_style = {'backgroundColor': '#1e1e1e', 'color': 'white', 'borderTop': '4px solid #fec036'}
+
 # Define the layout of the app
 app.layout = (
     html.Div(style={"backgroundColor": "#1e1e1e"}, children=[
+        dcc.Store(id='is-calculating', data=False),  # Dodaj stan obliczeń
         html.Link(rel='stylesheet', href='/assets/style.css'),
         dcc.Tabs([
             dcc.Tab(label='Założenia', style={'backgroundColor': '#1e1e1e', 'color': 'white'},
@@ -195,7 +198,5 @@ app.layout = (
     ])
 )
 
-
-
 if __name__ == '__main__':
-    app.run(host = "0.0.0.0", port =8502)
+    app.run(host="0.0.0.0", port=8502)
