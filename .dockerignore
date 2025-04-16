@@ -1,0 +1,9 @@
+.dockervenv
+.venv
+
+/.dockervenv
+/.venv
+
+.idea
+
+/.idea
