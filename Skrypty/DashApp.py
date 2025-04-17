@@ -8,8 +8,6 @@ from DashPlots import plot_podaz_popyt, annotate_plot
 from Main import app
 import os
 import base64
-import datetime
-import pandas as pd
 
 
 # Definicja tabeli magazynów
@@ -84,6 +82,19 @@ app.layout = (
                                 ], width=3, style={"backgroundColor": "#1e1e1e"}),
 
                                 dbc.Col([
+                                    dcc.Upload(
+                                        id='upload-main-data',
+                                        children=html.Div([
+                                            'Załącz plik z założeniami',
+                                        ]),
+                                        style={
+                                            'textAlign': 'center',
+                                            'margin': '10px'
+                                        },
+                                            multiple=True
+                                    ),
+                                    html.Div(id='output-div-main'),
+
                                     dcc.Dropdown(options=[
                                         {'label': 'Wysokie zapotrzebowanie w e.e.', 'value': cfg.scen_1_name},
                                         {'label': 'Niskie zapotrzebowanie w e.e.', 'value': cfg.scen_2_name},
@@ -213,7 +224,6 @@ app.layout = (
 )
 
 
-# Funkcja do przeszukiwania folderu i zwracania dostępnych plików
 def get_available_files(data_folder):
     available_files = ["bazowy.xlsx", "D1.xlsx", "D2.xlsx", "D3.xlsx", "K1.xlsx", "K2.xlsx", "K3.xlsx", "M1.xlsx"]
     existing_files = [f for f in available_files if f in os.listdir(data_folder)]
@@ -230,24 +240,21 @@ def get_available_files(data_folder):
 def display_uploaded_file(list_of_contents, list_of_names, list_of_dates):
     data_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane'))
 
-    if list_of_names is not None:
-        # Lista do przechowywania nazw plików
+    if list_of_contents is not None and list_of_names is not None:
+
         saved_files = []
 
         for content, name in zip(list_of_contents, list_of_names):
-            # Dekodowanie zawartości pliku
+
             content_type, content_string = content.split(',')
             decoded = base64.b64decode(content_string)
 
-            # Zapisz plik na dysku (nawet jeśli istnieje, zostanie nadpisany)
             file_path = os.path.join(data_folder, name)
             with open(file_path, 'wb') as f:
                 f.write(decoded)
 
-            # Dodaj nazwę pliku do listy
             saved_files.append(name)
 
-        # Aktualizacja opcji dropdown na podstawie załadowanych plików
         options = [{'label': name.replace('.xlsx', ''), 'value': name} for name in saved_files]
         return (
             [html.Div(name, style={
@@ -257,26 +264,74 @@ def display_uploaded_file(list_of_contents, list_of_names, list_of_dates):
                 'backgroundColor': '#2b2b2b',
                 'fontSize': '12px',
             }) for name in saved_files],
-            saved_files,  # Zaktualizuj dane w dcc.Store
-            options,  # Ustaw opcje dropdown
-            options[0]['value'] if options else None  # Ustaw domyślną wartość na pierwszy plik
+            saved_files,
+            options,
+            options[0]['value'] if options else None
         )
 
-    # Jeśli nie ma załadowanych plików, przeszukaj folder "Dane"
     available_files = get_available_files(data_folder)
     options = [{'label': name.replace('.xlsx', ''), 'value': name} for name in available_files]
     return (
-        html.H4("No files uploaded yet.", style={
+        html.H4("Nie załączono żadnego pliku.", style={
             'border': '1px dashed #007eff',
             'padding': '5px',
             'borderRadius': '5px',
             'backgroundColor': '#2b2b2b',
             'fontSize': '12px',
         }),
-        [],  # Brak załadowanych plików
-        options,  # Ustaw opcje dropdown na podstawie dostępnych plików
-        options[0]['value'] if options else None  # Ustaw domyślną wartość na pierwszy plik
+        [],
+        options,
+        options[0]['value'] if options else None
     )
+
+
+@app.callback(
+    Output('output-div-main', 'children'),
+    Input('upload-main-data', 'contents'),
+    State('upload-main-data', 'filename'),
+    State('upload-main-data', 'last_modified'))
+def display_uploaded_main_file(list_of_contents, list_of_names, list_of_dates):
+    data_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane'))
+    #main_file_name = "2025_04_15_Model pracy PMG_założenia.xlsx"
+    if isinstance(list_of_names, str):
+        list_of_names = [list_of_names]
+
+    if list_of_contents is not None and list_of_names is not None and len(list_of_names) > 0:
+
+        saved_files = []
+
+        for content, name in zip(list_of_contents, list_of_names):
+            content_type, content_string = content.split(',')
+            decoded = base64.b64decode(content_string)
+
+            file_path = os.path.join(data_folder, name)
+
+            with open(file_path, 'wb') as f:
+                f.write(decoded)
+
+            saved_files.append(name)
+
+        return (
+            [html.Div(name, style={
+                'border': '1px dashed #007eff',
+                'padding': '5px',
+                'borderRadius': '5px',
+                'backgroundColor': '#2b2b2b',
+                'fontSize': '12px',
+            }) for name in saved_files] #, saved_files
+        )
+
+    return (
+        html.H4("Nie załączono żadnego pliku.", style={
+            'border': '1px dashed #007eff',
+            'padding': '5px',
+            'borderRadius': '5px',
+            'backgroundColor': '#2b2b2b',
+            'fontSize': '12px',
+        }),
+        [],
+    )
+
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=8502)

@@ -891,3 +891,15 @@ body {
 #upload-data:hover {
     background-color: #585656;
 }
+
+#upload-main-data {
+    background-color: #2b2b2b;
+    border: 2px dashed #007eff;
+    padding: 5px;
+    text-align: center;
+    cursor: pointer;
+}
+
+#upload-main-data:hover {
+    background-color: #585656;
+}
