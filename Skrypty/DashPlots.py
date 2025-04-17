@@ -20,7 +20,7 @@ from dash import Dash, dcc
     Output("year-moce-figure", "figure"),
     Output("results-datatable", "data"),
     Output("download-yearly-results-xlsx", "data"),
-    Output('is-calculating', 'data'),  # Stan obliczeń jako wyjście
+    Output('is-calculating', 'data'),
     Input('scenario-selector', 'value'),
     Input('import-selector', 'value'),
     Input('run-all_year-calc', 'n_clicks'),
@@ -32,9 +32,11 @@ from dash import Dash, dcc
 def plot_all_years_bars(popyt_ccgt_scen_name, import_selector, n_clicks, podaz_df, zrodla, storage_investment_scenario,
                         is_calculating):
     if is_calculating:
-        raise PreventUpdate  # Blokowanie aktualizacji, jeśli już trwa obliczenie
+        raise PreventUpdate
 
-    # Ustaw is-calculating na True
+    if storage_investment_scenario is None:
+        raise PreventUpdate  # Zatrzymaj, jeśli nie wybrano pliku
+
     is_calculating = True
 
     print('start plot_all_years_bars')

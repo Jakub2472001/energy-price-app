@@ -6,6 +6,11 @@ from DataTransforms import calculate_residual_y, define_podaz_table, define_maga
 from LoadData import podaz_df
 from DashPlots import plot_podaz_popyt, annotate_plot
 from Main import app
+import os
+import base64
+import datetime
+import pandas as pd
+
 
 # Definicja tabeli magazynów
 magazyny_table = html.Div([dash_table.DataTable(
@@ -17,23 +22,23 @@ magazyny_table = html.Div([dash_table.DataTable(
     sort_mode='multi',
     style_table={
         'overflowX': 'auto',
-        'maxWidth': '100%',  # Limit the width of the table
+        'maxWidth': '100%',
     },
     style_cell={
         'backgroundColor': '#2b2b2b',
         'color': '#f3f6fa',
         'textAlign': 'left',
-        'whiteSpace': 'normal',  # Allow text to wrap
-        'height': 'auto',  # Allow row height to adjust based on content
-        'padding': '10px',  # Add some padding for better spacing
+        'whiteSpace': 'normal',
+        'height': 'auto',
+        'padding': '10px',
     },
     style_header={
         'backgroundColor': '#484848',
         'fontWeight': 'bold',
         'color': '#fec036',
-        'whiteSpace': 'normal',  # Allow header text to wrap
-        'textAlign': 'center',  # Center align header text
-        'height': 'auto',  # Allow header height to adjust based on content
+        'whiteSpace': 'normal',
+        'textAlign': 'center',
+        'height': 'auto',
     },
 ),
     html.Link(rel='stylesheet', href='/assets/style.css')])
@@ -43,7 +48,8 @@ selected_style = {'backgroundColor': '#1e1e1e', 'color': 'white', 'borderTop': '
 # Define the layout of the app
 app.layout = (
     html.Div(style={"backgroundColor": "#1e1e1e"}, children=[
-        dcc.Store(id='is-calculating', data=False),  # Dodaj stan obliczeń
+        dcc.Store(id='is-calculating', data=False),
+        dcc.Store(id='uploaded-files-store'),
         html.Link(rel='stylesheet', href='/assets/style.css'),
         dcc.Tabs([
             dcc.Tab(label='Założenia', style={'backgroundColor': '#1e1e1e', 'color': 'white'},
@@ -55,6 +61,21 @@ app.layout = (
                                     html.H3("Źródła", style={"textAlign": "center", 'color': "#fec036"}),
                                     html.Div(define_podaz_table(podaz_df)),
                                     html.H3("Magazyny", style={"textAlign": "center", 'color': "#fec036"}),
+
+                                    dcc.Upload(
+                                        id='upload-data',
+                                        children=html.Div([
+                                            'Załącz pliki excel',
+                                        ]),
+                                        style={
+                                            'textAlign': 'center',
+                                            'margin': '10px'
+                                        },
+                                        multiple=True
+                                    ),
+                                    html.Div(id='output-div'),
+                                    html.Div(id='output-datatable'),
+
                                     html.Div(magazyny_table),
                                     html.Button('Dodaj magazyn', id='editing-rows-button', n_clicks=0),
                                     dcc.Store(id='residual-calculation'),
@@ -68,46 +89,38 @@ app.layout = (
                                         {'label': 'Niskie zapotrzebowanie w e.e.', 'value': cfg.scen_2_name},
                                         {'label': 'S3 zapotrzebowanie w e.e.', 'value': cfg.scen_3_name},
                                     ],
-                                    value=cfg.scen_1_name, id='scenario-selector'),
+                                        value=cfg.scen_1_name, id='scenario-selector'),
 
                                     dcc.Dropdown(options=[
                                         {'label': 'Import w okresie zimowym', 'value': True},
                                         {'label': 'Brak importu w okresie zimowym', 'value': False},
                                     ],
-                                    value=False, id='import-selector'),
+                                        value=False, id='import-selector'),
+
+                                    dcc.Dropdown(id='storage-investment-scenario', options=[], value=None),  # Dropdown z plikami
 
                                     dcc.Dropdown(options=[
-                                        {'label': 'Bazowy', 'value': 'bazowy.xlsx'},
-                                        {'label': 'D1', 'value': 'D1.xlsx'},
-                                        {'label': 'D2', 'value': 'D2.xlsx'},
-                                        {'label': 'D3', 'value': 'D3.xlsx'},
-                                        {'label': 'K1', 'value': 'K1.xlsx'},
-                                        {'label': 'K2', 'value': 'K2.xlsx'},
-                                        {'label': 'K3', 'value': 'K3.xlsx'},
-                                        {'label': 'M1', 'value': 'M1.xlsx'},
-                                    ],
-                                    value='bazowy.xlsx', id='storage-investment-scenario'),
-
-                                    dcc.Dropdown(options=[
-                                        {'label': c, 'value': c} for c in podaz_df['źródło'] if c not in ['UA', 'SK (Vyrawa)']],
+                                        {'label': c, 'value': c} for c in podaz_df['źródło'] if
+                                        c not in ['UA', 'SK (Vyrawa)']],
                                         multi=True, value=[c for c in podaz_df['źródło']], id='źródła-selector'),
 
-                                    html.H3("Zródła gazu i zapotrzebowanie", style={"textAlign": "center", "color": "#fec036"}),
-                                    dcc.Slider(id='year_slider', value=cfg.start_year, min=cfg.start_year, max=cfg.end_year, step=1,
-                                               marks={int(y): str(int(y)) for y in np.arange(cfg.start_year, cfg.end_year + 1)}),
+                                    html.H3("Zródła gazu i zapotrzebowanie",
+                                            style={"textAlign": "center", "color": "#fec036"}),
+                                    dcc.Slider(id='year_slider', value=cfg.start_year, min=cfg.start_year,
+                                               max=cfg.end_year, step=1,
+                                               marks={int(y): str(int(y)) for y in
+                                                      np.arange(cfg.start_year, cfg.end_year + 1)}),
                                     dcc.Dropdown(options=[
                                         {'label': 'GWh', 'value': 1e3},
                                         {'label': 'mln m3', 'value': cfg.m3_to_kWh * 1e3},
                                     ],
-                                    value=1e3, id='units-selector'),
+                                        value=1e3, id='units-selector'),
 
                                     dcc.Loading(
                                         id="loading-podaz-popyt-figure",
                                         type="circle",
                                         children=[dcc.Graph(id="podaz-popyt-figure")]
                                     ),
-                                    html.Div(id='output-container', style={'margin-top': '20px'}),
-
                                     dcc.Loading(
                                         id="loading-residual-figure",
                                         type="circle",
@@ -116,7 +129,8 @@ app.layout = (
                                     html.Div(id='output-resid-container', style={'margin-top': '20px'}),
                                 ], width=9, style={"backgroundColor": "#2b2b2b"}),
                             ])
-                        ])
+                        ]),
+
                     ]),
 
             dcc.Tab(label='Analiza wystarczalności 2025-2040', style={'backgroundColor': '#1e1e1e', 'color': 'white'},
@@ -154,9 +168,9 @@ app.layout = (
                     children=[
                         dbc.Container([
                             dbc.Row(dcc.Slider(id='year-slider-secondary', value=cfg.start_year, min=cfg.start_year,
-                                                max=cfg.end_year, step=1, marks={int(y): str(int(y)) for y in
-                                                np.arange(cfg.start_year, cfg.end_year + 1)}),
-                            ),
+                                               max=cfg.end_year, step=1, marks={int(y): str(int(y)) for y in
+                                                                                  np.arange(cfg.start_year, cfg.end_year + 1)}),
+                                    ),
                             dbc.Row([
                                 html.H3("Suma pracy i stanu naładowania magazynów", style={"textAlign": "center", 'color': "#fec036"}),
                                 dcc.Loading(
@@ -197,6 +211,72 @@ app.layout = (
         ])
     ])
 )
+
+
+# Funkcja do przeszukiwania folderu i zwracania dostępnych plików
+def get_available_files(data_folder):
+    available_files = ["bazowy.xlsx", "D1.xlsx", "D2.xlsx", "D3.xlsx", "K1.xlsx", "K2.xlsx", "K3.xlsx", "M1.xlsx"]
+    existing_files = [f for f in available_files if f in os.listdir(data_folder)]
+    return existing_files
+
+@app.callback(
+    Output('output-div', 'children'),
+    Output('uploaded-files-store', 'data'),
+    Output('storage-investment-scenario', 'options'),
+    Output('storage-investment-scenario', 'value'),
+    Input('upload-data', 'contents'),
+    State('upload-data', 'filename'),
+    State('upload-data', 'last_modified'))
+def display_uploaded_file(list_of_contents, list_of_names, list_of_dates):
+    data_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane'))
+
+    if list_of_names is not None:
+        # Lista do przechowywania nazw plików
+        saved_files = []
+
+        for content, name in zip(list_of_contents, list_of_names):
+            # Dekodowanie zawartości pliku
+            content_type, content_string = content.split(',')
+            decoded = base64.b64decode(content_string)
+
+            # Zapisz plik na dysku (nawet jeśli istnieje, zostanie nadpisany)
+            file_path = os.path.join(data_folder, name)
+            with open(file_path, 'wb') as f:
+                f.write(decoded)
+
+            # Dodaj nazwę pliku do listy
+            saved_files.append(name)
+
+        # Aktualizacja opcji dropdown na podstawie załadowanych plików
+        options = [{'label': name.replace('.xlsx', ''), 'value': name} for name in saved_files]
+        return (
+            [html.Div(name, style={
+                'border': '1px dashed #007eff',
+                'padding': '5px',
+                'borderRadius': '5px',
+                'backgroundColor': '#2b2b2b',
+                'fontSize': '12px',
+            }) for name in saved_files],
+            saved_files,  # Zaktualizuj dane w dcc.Store
+            options,  # Ustaw opcje dropdown
+            options[0]['value'] if options else None  # Ustaw domyślną wartość na pierwszy plik
+        )
+
+    # Jeśli nie ma załadowanych plików, przeszukaj folder "Dane"
+    available_files = get_available_files(data_folder)
+    options = [{'label': name.replace('.xlsx', ''), 'value': name} for name in available_files]
+    return (
+        html.H4("No files uploaded yet.", style={
+            'border': '1px dashed #007eff',
+            'padding': '5px',
+            'borderRadius': '5px',
+            'backgroundColor': '#2b2b2b',
+            'fontSize': '12px',
+        }),
+        [],  # Brak załadowanych plików
+        options,  # Ustaw opcje dropdown na podstawie dostępnych plików
+        options[0]['value'] if options else None  # Ustaw domyślną wartość na pierwszy plik
+    )
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=8502)
