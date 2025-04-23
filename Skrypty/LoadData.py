@@ -3,9 +3,6 @@ import config as cfg
 import os
 
 
-#data_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane'))
-#main_path = "2025_04_15_Model pracy PMG_założenia.xlsx"
-#main_file_path = os.path.join(data_folder, main_path)
 
 data_folder_scenarios = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane/Usage_Scenarios'))
 
@@ -102,6 +99,7 @@ def load_podaz_df():
     return podaz_df.reset_index(names='źródło')
 
 
+#TODO: Do zakomentowania
 joined_demand = join_data()
 podaz_df = load_podaz_df()
 rezerwy_df = load_rezerwy_data()

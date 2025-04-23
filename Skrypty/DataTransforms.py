@@ -1,12 +1,11 @@
 import pandas as pd
 import numpy as np
-
 import config as cfg
 from Main import app
 from dash import html, Input, Output,dash_table, State
 from LoadData import joined_demand, load_magazyny_df
-
 from SimulateStorage import run_simulation_złożowy, run_simulation_kawerna
+
 
 
 def run_all_years_sim(popyt_ccgt_scen_name, imp_winter_off, podaz_df, zrodla_podazy, storage_investment_scenario):

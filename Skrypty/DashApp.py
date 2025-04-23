@@ -8,8 +8,8 @@ from DashPlots import plot_podaz_popyt, annotate_plot
 from Main import app
 import os
 import base64
-
 from flask import send_from_directory
+
 
 
 magazyny_table = html.Div([dash_table.DataTable(
@@ -69,7 +69,7 @@ app.layout = (
                                     dcc.Upload(
                                         id='upload-data',
                                         children=html.Div([
-                                            'Załącz pliki excel',
+                                            'Załącz pliki .xlsx ze scenariuszami z listy [bazowy, D1, D2, D3, K1, K2, K3, M1]',
                                         ]),
                                         style={
                                             'textAlign': 'center',
@@ -98,7 +98,7 @@ app.layout = (
                                     dcc.Upload(
                                         id='upload-main-data',
                                         children=html.Div([
-                                            'Załącz plik z założeniami',
+                                            'Załącz plik .xlsx z założeniami',
                                         ]),
                                         style={
                                             'textAlign': 'center',
