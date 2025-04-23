@@ -161,6 +161,7 @@ def define_magazyny_table(units, opt, y, storage_investment_scenario):
     print('start define_magazyny_table')
     u_label = [x['label'] for x in opt if x['value'] == units][0]
     print(storage_investment_scenario)
+
     df,_ = load_magazyny_df(path=storage_investment_scenario)
     df = df[y]
     df = (df/units).round(2)
@@ -169,7 +170,6 @@ def define_magazyny_table(units, opt, y, storage_investment_scenario):
     df = df.to_dict('records')
     print('done define_magazyny_table')
     return df
-
 
 
 def define_podaz_table(df):
@@ -210,6 +210,4 @@ def define_podaz_table(df):
         html.Link(rel='stylesheet', href='/assets/style.css')])
     print('done define_podaz_table')
     return podaz_table
-
-
 

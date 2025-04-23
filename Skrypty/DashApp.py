@@ -3,7 +3,7 @@ import config as cfg
 import numpy as np
 import dash_bootstrap_components as dbc
 from DataTransforms import calculate_residual_y, define_podaz_table, define_magazyny_table
-from LoadData import podaz_df
+from LoadData import podaz_df,load_podaz_df
 from DashPlots import plot_podaz_popyt, annotate_plot
 from Main import app
 import os
@@ -57,7 +57,12 @@ app.layout = (
                             dbc.Row([
                                 dbc.Col([
                                     html.H3("Źródła", style={"textAlign": "center", 'color': "#fec036"}),
-                                    html.Div(define_podaz_table(podaz_df)),
+                                    #html.Div(define_podaz_table(podaz_df)),
+                                    dcc.Loading(
+                                        id="loading-podaz-table", type="circle", children=[
+                                            html.Div(id='output-datatable-podaz', children=define_podaz_table(podaz_df))  # Tabela w Div
+                                        ]
+                                    ),
                                     html.H3("Magazyny", style={"textAlign": "center", 'color': "#fec036"}),
 
                                     dcc.Upload(
@@ -74,7 +79,14 @@ app.layout = (
                                     html.Div(id='output-div'),
                                     html.Div(id='output-datatable'),
 
-                                    html.Div(magazyny_table),
+                                    #html.Div(magazyny_table),
+
+                                    dcc.Loading(
+                                        id="loading-magazyny-table", type="circle", children=[
+                                            html.Div(id='output-datatable-magazyny', children=magazyny_table)
+                                        ]
+                                    ),
+
                                     html.Button('Dodaj magazyn', id='editing-rows-button', n_clicks=0),
                                     dcc.Store(id='residual-calculation'),
                                     dcc.Store(id='year-df-datatable'),
@@ -292,7 +304,9 @@ def display_uploaded_file(list_of_contents, list_of_names, list_of_dates):
     State('upload-main-data', 'last_modified'))
 def display_uploaded_main_file(list_of_contents, list_of_names, list_of_dates):
     data_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane'))
-    #main_file_name = "2025_04_15_Model pracy PMG_założenia.xlsx"
+
+    print("Names:", list_of_names)
+
     if isinstance(list_of_names, str):
         list_of_names = [list_of_names]
 
@@ -308,8 +322,15 @@ def display_uploaded_main_file(list_of_contents, list_of_names, list_of_dates):
 
             with open(file_path, 'wb') as f:
                 f.write(decoded)
-
+            print("B4 Saved files:", saved_files)
             saved_files.append(name)
+            print("A4 Saved files:", saved_files)
+
+            # Sprawdź, czy plik ma odpowiednią nazwę
+            if name == "2025_04_15_Model pracy PMG_założenia.xlsx":
+                global podaz_df
+                podaz_df = load_podaz_df()  # Wczytaj nowe dane
+                updated_table = define_podaz_table(podaz_df)
 
         return (
             [html.Div(name, style={
@@ -318,7 +339,7 @@ def display_uploaded_main_file(list_of_contents, list_of_names, list_of_dates):
                 'borderRadius': '5px',
                 'backgroundColor': '#2b2b2b',
                 'fontSize': '12px',
-            }) for name in saved_files] #, saved_files
+            }) for name in saved_files]
         )
 
     return (
@@ -331,6 +352,17 @@ def display_uploaded_main_file(list_of_contents, list_of_names, list_of_dates):
         }),
         [],
     )
+
+
+@app.callback(
+    Output('output-datatable-podaz', 'children'),
+    Input('upload-main-data', 'contents')
+)
+def update_table(contents):
+    print("UPDATE TABELI PODAŻOWEJ")
+    df = load_podaz_df()
+    return define_podaz_table(df)
+
 
 
 if __name__ == '__main__':
