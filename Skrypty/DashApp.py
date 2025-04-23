@@ -9,8 +9,9 @@ from Main import app
 import os
 import base64
 
+from flask import send_from_directory
 
-# Definicja tabeli magazynów
+
 magazyny_table = html.Div([dash_table.DataTable(
     id='datatable-magazyny',
     columns=[{'name': i, 'id': i, 'deletable': True} for i in
@@ -241,6 +242,7 @@ def get_available_files(data_folder):
     existing_files = [f for f in available_files if f in os.listdir(data_folder)]
     return existing_files
 
+
 @app.callback(
     Output('output-div', 'children'),
     Output('uploaded-files-store', 'data'),
@@ -250,39 +252,67 @@ def get_available_files(data_folder):
     State('upload-data', 'filename'),
     State('upload-data', 'last_modified'))
 def display_uploaded_file(list_of_contents, list_of_names, list_of_dates):
-    data_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane'))
+    data_subfolder_scenarios = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane/Usage_Scenarios'))
 
     if list_of_contents is not None and list_of_names is not None:
+
+        # Usunięcie wszystkich plików z podfolderu Usage_Scenarios
+        for filename in os.listdir(data_subfolder_scenarios):
+            file_path = os.path.join(data_subfolder_scenarios, filename)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
 
         saved_files = []
 
         for content, name in zip(list_of_contents, list_of_names):
-
             content_type, content_string = content.split(',')
             decoded = base64.b64decode(content_string)
 
-            file_path = os.path.join(data_folder, name)
+            file_path = os.path.join(data_subfolder_scenarios, name)
             with open(file_path, 'wb') as f:
                 f.write(decoded)
 
             saved_files.append(name)
 
+        # Generowanie opcji dla dropdowna
         options = [{'label': name.replace('.xlsx', ''), 'value': name} for name in saved_files]
+
         return (
-            [html.Div(name, style={
+            [html.A(name, href=f'/download_scenarios/{name}', style={
                 'border': '1px dashed #007eff',
                 'padding': '5px',
                 'borderRadius': '5px',
                 'backgroundColor': '#2b2b2b',
-                'fontSize': '12px',
+                'fontSize': '14px',
+                'display': 'block',
+                'color': 'white',
+                'textDecoration': 'underline',
             }) for name in saved_files],
             saved_files,
             options,
             options[0]['value'] if options else None
         )
 
-    available_files = get_available_files(data_folder)
-    options = [{'label': name.replace('.xlsx', ''), 'value': name} for name in available_files]
+    # Sprawdzenie dostępnych plików
+    existing_files = get_available_files(data_subfolder_scenarios)
+
+    if existing_files:
+        return (
+            [html.A(name, href=f'/download_scenarios/{name}', style={
+                'border': '1px dashed #007eff',
+                'padding': '5px',
+                'borderRadius': '5px',
+                'backgroundColor': '#2b2b2b',
+                'fontSize': '14px',
+                'display': 'block',
+                'color': 'white',
+                'textDecoration': 'underline',
+            }) for name in existing_files],
+            [],
+            [{'label': name.replace('.xlsx', ''), 'value': name} for name in existing_files],
+            existing_files[0] if existing_files else None
+        )
+
     return (
         html.H4("Nie załączono żadnego pliku.", style={
             'border': '1px dashed #007eff',
@@ -292,9 +322,15 @@ def display_uploaded_file(list_of_contents, list_of_names, list_of_dates):
             'fontSize': '12px',
         }),
         [],
-        options,
-        options[0]['value'] if options else None
+        [],
+        None
     )
+
+
+@app.server.route('/download_scenarios/<filename>')
+def download_file_scenarios(filename):
+    data_subfolder_scenarios = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane/Usage_Scenarios'))
+    return send_from_directory(data_subfolder_scenarios, filename, as_attachment=True)
 
 
 @app.callback(
@@ -303,14 +339,19 @@ def display_uploaded_file(list_of_contents, list_of_names, list_of_dates):
     State('upload-main-data', 'filename'),
     State('upload-main-data', 'last_modified'))
 def display_uploaded_main_file(list_of_contents, list_of_names, list_of_dates):
-    data_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane'))
-
-    print("Names:", list_of_names)
+    #data_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane'))
+    data_subfolder = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane/Usage'))
 
     if isinstance(list_of_names, str):
         list_of_names = [list_of_names]
 
     if list_of_contents is not None and list_of_names is not None and len(list_of_names) > 0:
+
+        # Usunięcie wszystkich plików z podfolderu Usage
+        for filename in os.listdir(data_subfolder):
+            file_path = os.path.join(data_subfolder, filename)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
 
         saved_files = []
 
@@ -318,28 +359,45 @@ def display_uploaded_main_file(list_of_contents, list_of_names, list_of_dates):
             content_type, content_string = content.split(',')
             decoded = base64.b64decode(content_string)
 
-            file_path = os.path.join(data_folder, name)
+            file_path = os.path.join(data_subfolder, name)  # Zmiana na data_subfolder
 
             with open(file_path, 'wb') as f:
                 f.write(decoded)
-            print("B4 Saved files:", saved_files)
-            saved_files.append(name)
-            print("A4 Saved files:", saved_files)
+                saved_files.append(name)
 
-            # Sprawdź, czy plik ma odpowiednią nazwę
             if name == "2025_04_15_Model pracy PMG_założenia.xlsx":
                 global podaz_df
                 podaz_df = load_podaz_df()  # Wczytaj nowe dane
                 updated_table = define_podaz_table(podaz_df)
 
         return (
-            [html.Div(name, style={
+            [html.A(name, href=f'/download/{name}', style={
                 'border': '1px dashed #007eff',
                 'padding': '5px',
                 'borderRadius': '5px',
                 'backgroundColor': '#2b2b2b',
-                'fontSize': '12px',
+                'fontSize': '14px',
+                'display': 'block',
+                'color': 'white',
+                'textDecoration': 'underline',
             }) for name in saved_files]
+        )
+
+    # Sprawdzenie, czy istnieje plik z "Model pracy PMG_założenia" w nazwie
+    existing_files = [f for f in os.listdir(data_subfolder) if "Model pracy PMG_założenia" in f]
+
+    if existing_files:
+        return (
+            [html.A(name, href=f'/download/{name}', style={
+                'border': '1px dashed #007eff',
+                'padding': '5px',
+                'borderRadius': '5px',
+                'backgroundColor': '#2b2b2b',
+                'fontSize': '14px',
+                'display': 'block',
+                'color': 'white',
+                'textDecoration': 'underline',
+            }) for name in existing_files]
         )
 
     return (
@@ -352,6 +410,12 @@ def display_uploaded_main_file(list_of_contents, list_of_names, list_of_dates):
         }),
         [],
     )
+
+
+@app.server.route('/download/<filename>')
+def download_file(filename):
+    data_subfolder = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane/Usage'))
+    return send_from_directory(data_subfolder, filename, as_attachment=True)
 
 
 @app.callback(

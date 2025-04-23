@@ -3,10 +3,26 @@ import config as cfg
 import os
 
 
-data_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane'))
+#data_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane'))
+#main_path = "2025_04_15_Model pracy PMG_założenia.xlsx"
+#main_file_path = os.path.join(data_folder, main_path)
 
-main_path = "2025_04_15_Model pracy PMG_założenia.xlsx"
-main_file_path = os.path.join(data_folder, main_path)
+data_folder_scenarios = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane/Usage_Scenarios'))
+
+data_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane/Usage'))
+
+def get_available_files(data_folder):
+    return [f for f in os.listdir(data_folder) if f.endswith('.xlsx')]
+
+available_files = get_available_files(data_folder)
+
+if available_files:
+    main_path = available_files[0]
+    main_file_path = os.path.join(data_folder, main_path)
+    print(f"Wybrany plik: {main_file_path}")
+else:
+    print("Brak dostępnych plików w folderze.")
+
 
 
 def load_magazyny_df(path):
@@ -16,7 +32,7 @@ def load_magazyny_df(path):
         cfg.moc_zatl_col: 1/24*1e3,
         cfg.moc_odb_col: 1 / 24 * 1e3
     }
-    full_path = os.path.join(data_folder, path)
+    full_path = os.path.join(data_folder_scenarios, path)
     magazyny_df = pd.read_excel(full_path, sheet_name=[cfg.pojemnosc_col, cfg.moc_zatl_col, cfg.moc_odb_col], index_col=0, header=0)
     yearly_magazyny_dict = {y:pd.DataFrame() for y in magazyny_df[next(iter(magazyny_df))].drop('jednostka', axis=1)}
     for key, df in magazyny_df.items():
@@ -84,6 +100,7 @@ def load_podaz_df():
     podaz_df.loc[:, ['mln m3/24h', 'MWh/h']] = podaz_df.loc[:, ['mln m3/24h', 'MWh/h']]  * cfg.zrodla_podazowe_dostepnosc
     podaz_df.loc['Źródła krajowe', ['mln m3/24h', 'MWh/h']] = podaz_df.loc['Źródła krajowe', ['mln m3/24h', 'MWh/h']] / cfg.zrodla_podazowe_dostepnosc
     return podaz_df.reset_index(names='źródło')
+
 
 joined_demand = join_data()
 podaz_df = load_podaz_df()
