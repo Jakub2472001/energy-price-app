@@ -3,7 +3,6 @@ import config as cfg
 import numpy as np
 import dash_bootstrap_components as dbc
 from DataTransforms import calculate_residual_y, define_podaz_table, define_magazyny_table
-#from LoadData import podaz_df,load_podaz_df
 from LoadData import load_podaz_df
 from DashPlots import plot_podaz_popyt, annotate_plot
 from Main import app
@@ -59,10 +58,9 @@ app.layout = (
                             dbc.Row([
                                 dbc.Col([
                                     html.H3("Źródła", style={"textAlign": "center", 'color': "#fec036"}),
-                                    #html.Div(define_podaz_table(podaz_df)),
                                     dcc.Loading(
                                         id="loading-podaz-table", type="circle", children=[
-                                            html.Div(id='output-datatable-podaz', children=define_podaz_table(load_podaz_df()))  # Tabela w Div
+                                            html.Div(id='output-datatable-podaz', children=define_podaz_table(load_podaz_df()))
                                         ]
                                     ),
                                     html.H3("Magazyny", style={"textAlign": "center", 'color': "#fec036"}),
@@ -80,8 +78,6 @@ app.layout = (
                                     ),
                                     html.Div(id='output-div'),
                                     html.Div(id='output-datatable'),
-
-                                    #html.Div(magazyny_table),
 
                                     dcc.Loading(
                                         id="loading-magazyny-table", type="circle", children=[
@@ -257,7 +253,6 @@ def display_uploaded_file(list_of_contents, list_of_names, list_of_dates):
 
     if list_of_contents is not None and list_of_names is not None:
 
-        # Usunięcie wszystkich plików z podfolderu Usage_Scenarios
         for filename in os.listdir(data_subfolder_scenarios):
             file_path = os.path.join(data_subfolder_scenarios, filename)
             if os.path.isfile(file_path):
@@ -275,8 +270,7 @@ def display_uploaded_file(list_of_contents, list_of_names, list_of_dates):
 
             saved_files.append(name)
 
-        # Generowanie opcji dla dropdowna
-        options = [{'label': name.replace('.xlsx', ''), 'value': name} for name in saved_files]
+        options = [{'label': name.replace('.xlsx', ''), 'value': name} for name in sorted(saved_files, key=str.lower)]
 
         return (
             [html.A(name, href=f'/download_scenarios/{name}', style={
@@ -294,7 +288,6 @@ def display_uploaded_file(list_of_contents, list_of_names, list_of_dates):
             options[0]['value'] if options else None
         )
 
-    # Sprawdzenie dostępnych plików
     existing_files = get_available_files(data_subfolder_scenarios)
 
     if existing_files:
@@ -340,7 +333,6 @@ def download_file_scenarios(filename):
     State('upload-main-data', 'filename'),
     State('upload-main-data', 'last_modified'))
 def display_uploaded_main_file(list_of_contents, list_of_names, list_of_dates):
-    #data_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane'))
     data_subfolder = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane/Usage'))
 
     if isinstance(list_of_names, str):
@@ -348,7 +340,6 @@ def display_uploaded_main_file(list_of_contents, list_of_names, list_of_dates):
 
     if list_of_contents is not None and list_of_names is not None and len(list_of_names) > 0:
 
-        # Usunięcie wszystkich plików z podfolderu Usage
         for filename in os.listdir(data_subfolder):
             file_path = os.path.join(data_subfolder, filename)
             if os.path.isfile(file_path):
@@ -360,16 +351,12 @@ def display_uploaded_main_file(list_of_contents, list_of_names, list_of_dates):
             content_type, content_string = content.split(',')
             decoded = base64.b64decode(content_string)
 
-            file_path = os.path.join(data_subfolder, name)  # Zmiana na data_subfolder
+            file_path = os.path.join(data_subfolder, name)
 
             with open(file_path, 'wb') as f:
                 f.write(decoded)
                 saved_files.append(name)
 
-            #if name == "2025_04_15_Model pracy PMG_założenia.xlsx":
-            #    global podaz_df
-            #    podaz_df = load_podaz_df()  # Wczytaj nowe dane
-            #    updated_table = define_podaz_table(podaz_df)
 
         return (
             [html.A(name, href=f'/download/{name}', style={
@@ -384,7 +371,6 @@ def display_uploaded_main_file(list_of_contents, list_of_names, list_of_dates):
             }) for name in saved_files]
         )
 
-    # Sprawdzenie, czy istnieje plik z "Model pracy PMG_założenia" w nazwie
     existing_files = [f for f in os.listdir(data_subfolder) if "Model pracy PMG_założenia" in f]
 
     if existing_files:

@@ -101,9 +101,3 @@ def load_podaz_df():
 def get_max_demand(df):
     max_demand = df.loc[:, [cfg.scen_1_name, 'zap. bez e.e.MWh/h']].sum(axis=1).max()
     return max_demand
-
-#TODO: Do zakomentowania
-#joined_demand = join_data()
-#podaz_df = load_podaz_df()
-#rezerwy_df = load_rezerwy_data()
-#max_demand = joined_demand.loc[:, [cfg.scen_1_name, 'zap. bez e.e.MWh/h']].sum(axis=1).max()

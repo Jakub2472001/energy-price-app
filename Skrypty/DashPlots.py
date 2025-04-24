@@ -8,9 +8,7 @@ from Main import app
 from dash import Input, Output, ctx, State
 from dash.exceptions import PreventUpdate
 from DataTransforms import calc_year_sim, run_all_years_sim
-#from LoadData import load_magazyny_df, max_demand
-from LoadData import load_magazyny_df, get_max_demand, join_data #TODO: POPRAWIONE
-
+from LoadData import load_magazyny_df, get_max_demand, join_data
 from LoadData import load_rezerwy_data
 from dash import html
 from dash import Dash, dcc
