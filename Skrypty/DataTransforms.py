@@ -3,7 +3,10 @@ import numpy as np
 import config as cfg
 from Main import app
 from dash import html, Input, Output,dash_table, State
-from LoadData import joined_demand, load_magazyny_df
+
+#from LoadData import joined_demand,
+from LoadData import join_data, load_magazyny_df  #TODO: POPRAWIONE
+
 from SimulateStorage import run_simulation_złożowy, run_simulation_kawerna
 
 
@@ -129,7 +132,9 @@ def calc_resid_no_callback(my_podaz_table, selected_scen, imp_winter, year, valu
     summer_moc_podazy = podaz_df.loc[summer_sources,:][cfg.base_unit].astype(int).sum()
     winter_moc_podazy = podaz_df.loc[winter_sources,:][cfg.base_unit].astype(int).sum()
 
-    year_df = joined_demand[joined_demand['Rok'] == year].reset_index(names = cfg.datetime_col_name)
+
+    year_df = join_data()[join_data()['Rok'] == year].reset_index(names=cfg.datetime_col_name) #TODO: POPRAWIONE
+    #year_df = joined_demand[joined_demand['Rok'] == year].reset_index(names = cfg.datetime_col_name)
     year_df.loc[:, cfg.datetime_col_name] = pd.to_datetime(year_df.loc[:, cfg.datetime_col_name])
 
     base_podaz_hourly = pd.DataFrame(index = year_df[cfg.datetime_col_name], dtype=float)
@@ -209,4 +214,3 @@ def define_podaz_table(df):
         html.Link(rel='stylesheet', href='/assets/style.css')])
     print('done define_podaz_table')
     return podaz_table
-

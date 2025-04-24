@@ -3,7 +3,8 @@ import config as cfg
 import numpy as np
 import dash_bootstrap_components as dbc
 from DataTransforms import calculate_residual_y, define_podaz_table, define_magazyny_table
-from LoadData import podaz_df,load_podaz_df
+#from LoadData import podaz_df,load_podaz_df
+from LoadData import load_podaz_df
 from DashPlots import plot_podaz_popyt, annotate_plot
 from Main import app
 import os
@@ -61,7 +62,7 @@ app.layout = (
                                     #html.Div(define_podaz_table(podaz_df)),
                                     dcc.Loading(
                                         id="loading-podaz-table", type="circle", children=[
-                                            html.Div(id='output-datatable-podaz', children=define_podaz_table(podaz_df))  # Tabela w Div
+                                            html.Div(id='output-datatable-podaz', children=define_podaz_table(load_podaz_df()))  # Tabela w Div
                                         ]
                                     ),
                                     html.H3("Magazyny", style={"textAlign": "center", 'color': "#fec036"}),
@@ -124,9 +125,9 @@ app.layout = (
                                     dcc.Dropdown(id='storage-investment-scenario', options=[], value=None),  # Dropdown z plikami
 
                                     dcc.Dropdown(options=[
-                                        {'label': c, 'value': c} for c in podaz_df['źródło'] if
+                                        {'label': c, 'value': c} for c in load_podaz_df()['źródło'] if
                                         c not in ['UA', 'SK (Vyrawa)']],
-                                        multi=True, value=[c for c in podaz_df['źródło']], id='źródła-selector'),
+                                        multi=True, value=[c for c in load_podaz_df()['źródło']], id='źródła-selector'),
 
                                     html.H3("Zródła gazu i zapotrzebowanie",
                                             style={"textAlign": "center", "color": "#fec036"}),
@@ -365,10 +366,10 @@ def display_uploaded_main_file(list_of_contents, list_of_names, list_of_dates):
                 f.write(decoded)
                 saved_files.append(name)
 
-            if name == "2025_04_15_Model pracy PMG_założenia.xlsx":
-                global podaz_df
-                podaz_df = load_podaz_df()  # Wczytaj nowe dane
-                updated_table = define_podaz_table(podaz_df)
+            #if name == "2025_04_15_Model pracy PMG_założenia.xlsx":
+            #    global podaz_df
+            #    podaz_df = load_podaz_df()  # Wczytaj nowe dane
+            #    updated_table = define_podaz_table(podaz_df)
 
         return (
             [html.A(name, href=f'/download/{name}', style={

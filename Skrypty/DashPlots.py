@@ -8,8 +8,10 @@ from Main import app
 from dash import Input, Output, ctx, State
 from dash.exceptions import PreventUpdate
 from DataTransforms import calc_year_sim, run_all_years_sim
-from LoadData import load_magazyny_df, max_demand
-from LoadData import rezerwy_df
+#from LoadData import load_magazyny_df, max_demand
+from LoadData import load_magazyny_df, get_max_demand, join_data #TODO: POPRAWIONE
+
+from LoadData import load_rezerwy_data
 from dash import html
 from dash import Dash, dcc
 
@@ -138,7 +140,7 @@ def plot_podaz_popyt(year_df, residual, scen_name, units, opt):
     subfig.update_xaxes(showgrid=False, showline=False)
     subfig.update_yaxes(showgrid=False)
     subfig.update_layout(yaxis_title='Zapotrzebowanie na gaz [%s/h]' % u_label)
-    subfig.update_yaxes(range=[0, max_demand / units])
+    subfig.update_yaxes(range=[0, get_max_demand(join_data()) / units]) #TODO: POPRAWIONE
 
     resid_plot = plot_residual(residual, units, u_label)
     print('done plotting podaz popyt')
@@ -211,7 +213,7 @@ def make_storage_fig(results_df, title, magazyny_y_df, units, u_label, year):
                   line_dash="dash", line_color="white", row=2, col=1, showlegend=True)
 
     if title in cfg.mag_calc_order:
-        fig.add_hline(y=magazyny_y_df.loc[title, cfg.pojemnosc_col] / units * rezerwy_df.loc[year, title],
+        fig.add_hline(y=magazyny_y_df.loc[title, cfg.pojemnosc_col] / units * load_rezerwy_data().loc[year, title],
                       name='pojemność', line_width=1, line_dash="dash", line_color="white", row=2, col=1,
                       showlegend=True)
 
