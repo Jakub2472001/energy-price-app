@@ -1,3 +1,4 @@
+import pandas as pd
 from dash import html, Input, Output, State, dash_table, dcc
 import config as cfg
 import numpy as np
@@ -49,6 +50,12 @@ app.layout = (
     html.Div(style={"backgroundColor": "#1e1e1e"}, children=[
         dcc.Store(id='is-calculating', data=False),
         dcc.Store(id='uploaded-files-store'),
+
+        dcc.Store(id='join_data'), #TODO: DODANE (1)
+        dcc.Store(id='load_podaz_df'), #TODO: DODANE (2)
+        #dcc.Store(id='load_rezerwy'), #TODO: DODANE (3)
+        #dcc.Store(id='load_magazyny_df'), #TODO: DODANE (4)
+
         html.Link(rel='stylesheet', href='/assets/style.css'),
         dcc.Tabs([
             dcc.Tab(label='Założenia', style={'backgroundColor': '#1e1e1e', 'color': 'white'},
@@ -60,7 +67,7 @@ app.layout = (
                                     html.H3("Źródła", style={"textAlign": "center", 'color': "#fec036"}),
                                     dcc.Loading(
                                         id="loading-podaz-table", type="circle", children=[
-                                            html.Div(id='output-datatable-podaz', children=define_podaz_table(load_podaz_df()))
+                                            html.Div(id='output-datatable-podaz') #, children=define_podaz_table(load_podaz_df())) #TODO: (2)
                                         ]
                                     ),
                                     html.H3("Magazyny", style={"textAlign": "center", 'color': "#fec036"}),
@@ -120,10 +127,17 @@ app.layout = (
 
                                     dcc.Dropdown(id='storage-investment-scenario', options=[], value=None),  # Dropdown z plikami
 
-                                    dcc.Dropdown(options=[
-                                        {'label': c, 'value': c} for c in load_podaz_df()['źródło'] if
-                                        c not in ['UA', 'SK (Vyrawa)']],
-                                        multi=True, value=[c for c in load_podaz_df()['źródło']], id='źródła-selector'),
+                                    #dcc.Dropdown(options=[
+                                    #    {'label': c, 'value': c} for c in load_podaz_df()['źródło'] if
+                                    #    c not in ['UA', 'SK (Vyrawa)']],
+                                    #    multi=True, value=[c for c in load_podaz_df()['źródło']], id='źródła-selector'),
+
+                                    dcc.Dropdown( #TODO: (2)
+                                        id='źródła-selector',
+                                        multi=True,
+                                        value=[],  # Domyślna wartość, może być pusta
+                                        options=[]  # Opcje będą aktualizowane w callbacku
+                                    ),
 
                                     html.H3("Zródła gazu i zapotrzebowanie",
                                             style={"textAlign": "center", "color": "#fec036"}),
@@ -405,16 +419,42 @@ def download_file(filename):
     return send_from_directory(data_subfolder, filename, as_attachment=True)
 
 
+
+
+@app.callback(
+    Output('źródła-selector', 'options'),
+    Input('load_podaz_df', 'data'),
+)
+def update_dropdown(data):
+    if data is None:
+        return []
+    df = pd.DataFrame(data)
+    options = [{'label': c, 'value': c} for c in df['źródło'] if c not in ['UA', 'SK (Vyrawa)']]
+    print('Wywowłanie update_dropdown (data):')
+    return options
+
+
+@app.callback(
+    Output('źródła-selector', 'value'),
+    Input('load_podaz_df', 'data'),
+)
+def update_dropdown_value(data):
+    if data is None:
+        return []
+    df = pd.DataFrame(data)
+    print('Wywowłanie update_dropdown_value(data):')
+    return df['źródło'].tolist()
+
 @app.callback(
     Output('output-datatable-podaz', 'children'),
-    Input('upload-main-data', 'contents')
+    Input('load_podaz_df', 'data'),
 )
-def update_table(contents):
-    print("UPDATE TABELI PODAŻOWEJ")
-    df = load_podaz_df()
-    return define_podaz_table(df)
-
+def update_table(data):
+    if data is None:
+        return "Brak danych do wyświetlenia."
+    print('Wywowłanie update_table(data):')
+    return define_podaz_table(pd.DataFrame(data))
 
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=8502)
+    app.run(host="0.0.0.0", port=8502, debug=True)

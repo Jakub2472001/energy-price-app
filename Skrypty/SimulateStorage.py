@@ -11,13 +11,14 @@ def read_efficiency(SoC, max_capacity, profil_sub_df):
         eff=0
     return eff
 
-def run_simulation_kawerna(residual, max_capacity, charging_power, discharging_power, percent_full, name, profil_dict, year):
+def run_simulation_kawerna(residual, max_capacity, charging_power, discharging_power, percent_full, name, profil_dict, year, contents): #TODO: DODANE (3)
     SoC = np.zeros(len(residual))
     SoC[0] = max_capacity * percent_full
     charging = np.zeros(len(residual))
     discharging = np.zeros(len(residual))
     power_profile = np.zeros(len(residual))
-    rezerwy_df = load_rezerwy_data()
+    load_rezerwy_df = pd.DataFrame(contents) #TODO: DODANE (3)
+    rezerwy_df = load_rezerwy_data(load_rezerwy_df) #TODO: DODANE (3)
 
     # Iterate over hourly demand
     for t in range(len(residual)):
@@ -47,14 +48,14 @@ def run_simulation_kawerna(residual, max_capacity, charging_power, discharging_p
 
     return SoC, power_profile*-1
 
-def run_simulation_złożowy(residual, max_capacity, charging_power, discharging_power, percent_full, name, profil_dict, year):
+def run_simulation_złożowy(residual, max_capacity, charging_power, discharging_power, percent_full, name, profil_dict, year, contents): #TODO: DODANE (3)
     SoC = np.zeros(len(residual))
     SoC[0] = max_capacity* percent_full
     charging = np.zeros(len(residual))
     discharging = np.zeros(len(residual))
     power_profile = np.zeros(len(residual))
-
-    rezerwy_df = load_rezerwy_data()
+    load_rezerwy_df = pd.DataFrame(contents) #TODO: DODANE (3)
+    rezerwy_df = load_rezerwy_data(load_rezerwy_df) #TODO: DODANE (3)
 
     # Iterate over hourly demand
     for t in range(len(residual)):

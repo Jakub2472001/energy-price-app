@@ -1,7 +1,8 @@
 import pandas as pd
 import config as cfg
 import os
-
+from dash import html, Input, Output, State, dash_table, dcc
+from Main import app
 
 
 data_folder_scenarios = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane/Usage_Scenarios'))
@@ -63,9 +64,13 @@ def load_pse_data():
     pse_df.loc[:,cfg.scen_3_name] = pse_df.loc[:,cfg.scen_3_name]/ cfg.srednia_sprawnosc_el_ec_gazowych
     return pse_df
 
-def load_rezerwy_data():
+@app.callback(
+    Output('load_rezerwy', 'data'), #TODO: DODANE (3)
+    Input('upload-main-data', 'contents'), #TODO: DODANE (3)
+)
+def load_rezerwy_data(contents): #TODO: DODANE (3)
     rezerwy_df = pd.read_excel(main_file_path, index_col=0,  sheet_name='zapas obowiązkowy').T
-    return rezerwy_df
+    return rezerwy_df.to_dict('records') #TODO: DODANE (3)
 
 def load_new_zap_data():
 
@@ -80,23 +85,34 @@ def load_new_zap_data():
 
     return new_popyt_ts_long
 
-def join_data():
 
+@app.callback(
+    Output('join_data', 'data'), #TODO: DODANE (1)
+    Input('upload-main-data', 'contents'), #TODO: DODANE (1)
+)
+def join_data(contents): #TODO: DODANE (1)
     pse_df = load_pse_data()
     new_popyt_ts_long = load_new_zap_data()
-
     calk_zap_merged = pse_df
-
     calk_zap_merged_new = calk_zap_merged.merge(new_popyt_ts_long, left_index=True, right_on='dt', how='right').set_index('dt')
-    return calk_zap_merged_new
+    calk_zap_merged_new.reset_index(inplace=True)
+    print('Wywowłanie join_data(contents):')
+    return calk_zap_merged_new.to_dict('records') #TODO: DODANE (1)
 
-def load_podaz_df():
+
+@app.callback(
+    Output('load_podaz_df', 'data'), #TODO: DODANE (2)
+    Input('upload-main-data', 'contents'), #TODO: DODANE (2)
+)
+def load_podaz_df(contents): #TODO: DODANE (2)
     podaz_df = pd.read_excel(main_file_path, index_col=0, header=0, sheet_name='Źródła podaży')
     podaz_df.loc[:, 'MWh/h'] = (podaz_df['mln m3 na dobę'] / 24 * cfg.m3_to_kWh *1e3).round(0)
     podaz_df =podaz_df.rename({'mln m3 na dobę' : 'mln m3/24h'}, axis=1)
     podaz_df.loc[:, ['mln m3/24h', 'MWh/h']] = podaz_df.loc[:, ['mln m3/24h', 'MWh/h']]  * cfg.zrodla_podazowe_dostepnosc
     podaz_df.loc['Źródła krajowe', ['mln m3/24h', 'MWh/h']] = podaz_df.loc['Źródła krajowe', ['mln m3/24h', 'MWh/h']] / cfg.zrodla_podazowe_dostepnosc
-    return podaz_df.reset_index(names='źródło')
+    print('Wywowłanie load_podaz_df(contents):')
+    return podaz_df.reset_index(names='źródło').to_dict('records') #TODO: DODANE (2)
+
 
 def get_max_demand(df):
     max_demand = df.loc[:, [cfg.scen_1_name, 'zap. bez e.e.MWh/h']].sum(axis=1).max()
