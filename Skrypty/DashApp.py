@@ -1,4 +1,3 @@
-import pandas as pd
 from dash import html, Input, Output, State, dash_table, dcc
 import config as cfg
 import numpy as np
@@ -10,8 +9,9 @@ from Main import app
 import os
 import base64
 from flask import send_from_directory
+import pandas as pd
 
-
+from Skrypty.LoadData import join_data, load_rezerwy_data
 
 magazyny_table = html.Div([dash_table.DataTable(
     id='datatable-magazyny',
@@ -51,10 +51,9 @@ app.layout = (
         dcc.Store(id='is-calculating', data=False),
         dcc.Store(id='uploaded-files-store'),
 
-        dcc.Store(id='join_data'), #TODO: DODANE (1)
-        dcc.Store(id='load_podaz_df'), #TODO: DODANE (2)
-        #dcc.Store(id='load_rezerwy'), #TODO: DODANE (3)
-        #dcc.Store(id='load_magazyny_df'), #TODO: DODANE (4)
+        dcc.Store(id='podaz-store'), #TODO: (2)
+        dcc.Store(id='joined-store'), #TODO: (3)
+        dcc.Store(id='rezerwy-store'), #TODO: (4)!
 
         html.Link(rel='stylesheet', href='/assets/style.css'),
         dcc.Tabs([
@@ -67,7 +66,8 @@ app.layout = (
                                     html.H3("Źródła", style={"textAlign": "center", 'color': "#fec036"}),
                                     dcc.Loading(
                                         id="loading-podaz-table", type="circle", children=[
-                                            html.Div(id='output-datatable-podaz') #, children=define_podaz_table(load_podaz_df())) #TODO: (2)
+                                            #html.Div(id='output-datatable-podaz', children=define_podaz_table(load_podaz_df()))
+                                            html.Div(id='output-datatable-podaz') # TODO: (1)
                                         ]
                                     ),
                                     html.H3("Magazyny", style={"textAlign": "center", 'color': "#fec036"}),
@@ -127,17 +127,15 @@ app.layout = (
 
                                     dcc.Dropdown(id='storage-investment-scenario', options=[], value=None),  # Dropdown z plikami
 
+                                    # TODO: (2)
+                                    dcc.Dropdown(id='źródła-selector', options=[], multi=True, value=[], placeholder="Wybierz źródła"),
+
+
                                     #dcc.Dropdown(options=[
                                     #    {'label': c, 'value': c} for c in load_podaz_df()['źródło'] if
                                     #    c not in ['UA', 'SK (Vyrawa)']],
                                     #    multi=True, value=[c for c in load_podaz_df()['źródło']], id='źródła-selector'),
 
-                                    dcc.Dropdown( #TODO: (2)
-                                        id='źródła-selector',
-                                        multi=True,
-                                        value=[],  # Domyślna wartość, może być pusta
-                                        options=[]  # Opcje będą aktualizowane w callbacku
-                                    ),
 
                                     html.H3("Zródła gazu i zapotrzebowanie",
                                             style={"textAlign": "center", "color": "#fec036"}),
@@ -342,6 +340,11 @@ def download_file_scenarios(filename):
 
 
 @app.callback(
+
+    Output('rezerwy-store', 'data'),  # TODO: (4)!
+    Output('joined-store', 'data'),  # TODO: (3)
+    Output('podaz-store', 'data'),  # TODO: (2)
+    Output('output-datatable-podaz', 'children'), # TODO: (1)
     Output('output-div-main', 'children'),
     Input('upload-main-data', 'contents'),
     State('upload-main-data', 'filename'),
@@ -353,7 +356,6 @@ def display_uploaded_main_file(list_of_contents, list_of_names, list_of_dates):
         list_of_names = [list_of_names]
 
     if list_of_contents is not None and list_of_names is not None and len(list_of_names) > 0:
-
         for filename in os.listdir(data_subfolder):
             file_path = os.path.join(data_subfolder, filename)
             if os.path.isfile(file_path):
@@ -366,12 +368,11 @@ def display_uploaded_main_file(list_of_contents, list_of_names, list_of_dates):
             decoded = base64.b64decode(content_string)
 
             file_path = os.path.join(data_subfolder, name)
-
             with open(file_path, 'wb') as f:
                 f.write(decoded)
-                saved_files.append(name)
+            saved_files.append(name)
 
-
+    """
         return (
             [html.A(name, href=f'/download/{name}', style={
                 'border': '1px dashed #007eff',
@@ -384,11 +385,23 @@ def display_uploaded_main_file(list_of_contents, list_of_names, list_of_dates):
                 'textDecoration': 'underline',
             }) for name in saved_files]
         )
+    """
 
     existing_files = [f for f in os.listdir(data_subfolder) if "Model pracy PMG_założenia" in f]
 
+    podaz_df = load_podaz_df() # TODO: (1)
+    podaz_table = define_podaz_table(podaz_df) # TODO: (1)
+
+    joined_df = join_data() # TODO: (3)
+
+    rezerwy_df = load_rezerwy_data() # TODO: (4)!
+
     if existing_files:
         return (
+            rezerwy_df.to_dict('records'), # TODO: (4)!
+            joined_df.to_dict('records'), # TODO: (3)
+            podaz_df.to_dict('records'), # TODO: (2)
+            podaz_table, # TODO: (1)
             [html.A(name, href=f'/download/{name}', style={
                 'border': '1px dashed #007eff',
                 'padding': '5px',
@@ -402,6 +415,10 @@ def display_uploaded_main_file(list_of_contents, list_of_names, list_of_dates):
         )
 
     return (
+        rezerwy_df.to_dict('records'),  # TODO: (4)!
+        joined_df.to_dict('records'),  # TODO: (3)
+        podaz_df.to_dict('records'), # TODO: (2)
+        podaz_table, # TODO: (1)
         html.H4("Nie załączono żadnego pliku.", style={
             'border': '1px dashed #007eff',
             'padding': '5px',
@@ -418,43 +435,23 @@ def download_file(filename):
     data_subfolder = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane/Usage'))
     return send_from_directory(data_subfolder, filename, as_attachment=True)
 
-
-
-
+# TODO: (2)
 @app.callback(
     Output('źródła-selector', 'options'),
-    Input('load_podaz_df', 'data'),
-)
-def update_dropdown(data):
-    if data is None:
-        return []
-    df = pd.DataFrame(data)
-    options = [{'label': c, 'value': c} for c in df['źródło'] if c not in ['UA', 'SK (Vyrawa)']]
-    print('Wywowłanie update_dropdown (data):')
-    return options
-
-
-@app.callback(
     Output('źródła-selector', 'value'),
-    Input('load_podaz_df', 'data'),
-)
-def update_dropdown_value(data):
-    if data is None:
-        return []
-    df = pd.DataFrame(data)
-    print('Wywowłanie update_dropdown_value(data):')
-    return df['źródło'].tolist()
+    Input('podaz-store', 'data'))
+def update_dropdown_options(podaz_data):
+    if podaz_data is None:
+        return [], []
 
-@app.callback(
-    Output('output-datatable-podaz', 'children'),
-    Input('load_podaz_df', 'data'),
-)
-def update_table(data):
-    if data is None:
-        return "Brak danych do wyświetlenia."
-    print('Wywowłanie update_table(data):')
-    return define_podaz_table(pd.DataFrame(data))
+    podaz_df = pd.DataFrame(podaz_data)
+
+    options = [{'label': c, 'value': c} for c in podaz_df['źródło'] if c not in ['UA', 'SK (Vyrawa)']]
+    value = [c for c in podaz_df['źródło']]
+
+    return options, value
+
 
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=8502, debug=True)
+    app.run(host="0.0.0.0", port=8502)

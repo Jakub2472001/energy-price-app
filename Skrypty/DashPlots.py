@@ -27,12 +27,17 @@ from dash import Dash, dcc
     Input('źródła-selector', 'value'),
     Input('storage-investment-scenario', 'value'),
     State('is-calculating', 'data'),  # Sprawdzamy stan obliczeń
-    Input('load_rezerwy', 'data'),#TODO: DODANE (3)
+    Input('joined-store', 'data'),  #TODO: (3)
+    Input('rezerwy-store', 'data'),  #TODO: (4)!
 )
 def plot_all_years_bars(popyt_ccgt_scen_name, import_selector, n_clicks, podaz_df, zrodla, storage_investment_scenario,
-                        is_calculating, contents): #TODO: DODANE (3)
+                        is_calculating, joined_contents, rezerwy_contents): #TODO: (3) + #TODO: (4)!
 
-    load_rezerwy_df = pd.DataFrame(contents) #TODO: DODANE (3)
+    joined_df = pd.DataFrame(joined_contents) #TODO: (3)
+
+    rezerwy_df = pd.DataFrame(rezerwy_contents) #TODO: (4)!
+    rezerwy_df.set_index("index", inplace=True)
+
 
     if is_calculating:
         raise PreventUpdate
@@ -50,8 +55,8 @@ def plot_all_years_bars(popyt_ccgt_scen_name, import_selector, n_clicks, podaz_d
         results_df, all_gas_demands, storage_results_df, all_years_h = run_all_years_sim(popyt_ccgt_scen_name,
                                                                                          import_selector, podaz_df,
                                                                                          zrodla,
-                                                                                         storage_investment_scenario,
-                                                                                         load_rezerwy_df) #TODO: DODANE (3)
+                                                                                         storage_investment_scenario, joined_df, #TODO: (3)
+                                                                                         rezerwy_df) #TODO: (4)!
 
         ts_save = pd.merge(storage_results_df, all_years_h, left_on=cfg.datetime_col_name,
                            right_on=cfg.datetime_col_name)
@@ -118,12 +123,12 @@ def plot_residual(residual, units, u_label):
     Input('scenario-selector', 'value'),
     Input('units-selector', 'value'),
     State('units-selector', 'options'),
-    Input('join_data', 'data'),  #TODO: DODANE (1)
+    Input('joined-store', 'data'), # TODO: DODANE (3)
 )
-def plot_podaz_popyt(year_df, residual, scen_name, units, opt, contents): #TODO: DODANE (1)
+def plot_podaz_popyt(year_df, residual, scen_name, units, opt, joined_contents): #TODO: DODANE (3)
     print('start plot_podaz_popyt')
 
-    joined = pd.DataFrame(contents) #TODO: DODANE (1)
+    joined_df = pd.DataFrame(joined_contents) #TODO: DODANE (3)
 
     u_label = [x['label'] for x in opt if x['value'] == units][0]
 
@@ -147,12 +152,11 @@ def plot_podaz_popyt(year_df, residual, scen_name, units, opt, contents): #TODO:
     subfig.update_xaxes(showgrid=False, showline=False)
     subfig.update_yaxes(showgrid=False)
     subfig.update_layout(yaxis_title='Zapotrzebowanie na gaz [%s/h]' % u_label)
-    subfig.update_yaxes(range=[0, get_max_demand(joined) / units]) #TODO: DODANE (1)
+    #subfig.update_yaxes(range=[0, get_max_demand(join_data()) / units])
+    subfig.update_yaxes(range=[0, get_max_demand(joined_df) / units])  # TODO: DODANE (3)
 
     resid_plot = plot_residual(residual, units, u_label)
     print('done plotting podaz popyt')
-
-    print('Wywowłanie plot_podaz_popyt(year_df, residual, scen_name, units, opt, contents):')
 
     return subfig, resid_plot
 
@@ -169,12 +173,13 @@ def plot_podaz_popyt(year_df, residual, scen_name, units, opt, contents): #TODO:
     Input('units-selector', 'value'),
     State('units-selector', 'options'),
     Input('storage-investment-scenario', 'value'),
-    Input('load_rezerwy', 'data'),  #TODO: DODANE (3)
+    Input('rezerwy-store', 'data') # TODO: (4)!
 )
-def plot_opt_storage(storage_results_table, year, units, opt, storage_investment_scenario, load_rezerwy):
+def plot_opt_storage(storage_results_table, year, units, opt, storage_investment_scenario, rezerwy_contents): # TODO: (4)!
     print('start calc_opt_storage: ', ctx.triggered_id)
 
-    load_rezerwy_df = pd.DataFrame(load_rezerwy) #TODO: DODANE (3)
+    rezerwy_df = pd.DataFrame(rezerwy_contents)  # TODO: (4)!
+    rezerwy_df.set_index("index", inplace=True)
 
     if ctx.triggered_id is not None and ctx.triggered_id != 'datatable-magazyny' and len(
             pd.DataFrame(storage_results_table)) > 0:
@@ -191,12 +196,12 @@ def plot_opt_storage(storage_results_table, year, units, opt, storage_investment
         results_df = results_df[y_mask]
 
         # Magazyny po kolei zdejmują zapotrzebowania z całkowitego zapotrzebowania do magazynów.
-        storage_op_fig = make_storage_fig(results_df, 'Magazyny łącznie', magazyny_y_df, units, u_label, year, load_rezerwy_df)  #TODO: DODANE (3)
-        sanok_fig = make_storage_fig(results_df, cfg.sanok_name, magazyny_y_df, units, u_label, year, load_rezerwy_df) #TODO: DODANE (3)
-        wierzchowice_fig = make_storage_fig(results_df, cfg.wierzchowice_name, magazyny_y_df, units, u_label, year, load_rezerwy_df) #TODO: DODANE (3)
-        kosakowo_fig = make_storage_fig(results_df, cfg.kosakowo_name, magazyny_y_df, units, u_label, year, load_rezerwy_df) #TODO: DODANE (3)
-        mogilno_fig = make_storage_fig(results_df, cfg.mogilno_name, magazyny_y_df, units, u_label, year, load_rezerwy_df) #TODO: DODANE (3)
-        damaslawek_fig = make_storage_fig(results_df, cfg.damaslawek_name, magazyny_y_df, units, u_label, year, load_rezerwy_df) #TODO: DODANE (3)
+        storage_op_fig = make_storage_fig(results_df, 'Magazyny łącznie', magazyny_y_df, units, u_label, year, rezerwy_df) # TODO: (4)!
+        sanok_fig = make_storage_fig(results_df, cfg.sanok_name, magazyny_y_df, units, u_label, year, rezerwy_df) # TODO: (4)!
+        wierzchowice_fig = make_storage_fig(results_df, cfg.wierzchowice_name, magazyny_y_df, units, u_label, year, rezerwy_df) # TODO: (4)!
+        kosakowo_fig = make_storage_fig(results_df, cfg.kosakowo_name, magazyny_y_df, units, u_label, year, rezerwy_df) # TODO: (4)!
+        mogilno_fig = make_storage_fig(results_df, cfg.mogilno_name, magazyny_y_df, units, u_label, year, rezerwy_df) # TODO: (4)!
+        damaslawek_fig = make_storage_fig(results_df, cfg.damaslawek_name, magazyny_y_df, units, u_label, year, rezerwy_df) # TODO: (4)!
         print('done calculating opt storage')
 
         return storage_op_fig, sanok_fig, wierzchowice_fig, kosakowo_fig, mogilno_fig, damaslawek_fig
@@ -204,10 +209,8 @@ def plot_opt_storage(storage_results_table, year, units, opt, storage_investment
         raise PreventUpdate
 
 
-def make_storage_fig(results_df, title, magazyny_y_df, units, u_label, year, contents): #TODO: DODANE (3)
+def make_storage_fig(results_df, title, magazyny_y_df, units, u_label, year, rezerwy_df): # TODO: (4)!
     print('start make_storage_fig:', title)
-
-    load_rezerwy_df = contents
 
     residual = results_df[title + cfg.residual_suffix] / units
     pp = results_df[title + cfg.pp_suffix] / units
@@ -227,7 +230,8 @@ def make_storage_fig(results_df, title, magazyny_y_df, units, u_label, year, con
                   line_dash="dash", line_color="white", row=2, col=1, showlegend=True)
 
     if title in cfg.mag_calc_order:
-        fig.add_hline(y=magazyny_y_df.loc[title, cfg.pojemnosc_col] / units * load_rezerwy_data(load_rezerwy_df).loc[year, title], #TODO: DODANE (3)
+        #fig.add_hline(y=magazyny_y_df.loc[title, cfg.pojemnosc_col] / units * load_rezerwy_data().loc[year, title],
+        fig.add_hline(y=magazyny_y_df.loc[title, cfg.pojemnosc_col] / units * rezerwy_df.loc[year, title], # TODO: (4)!
                       name='pojemność', line_width=1, line_dash="dash", line_color="white", row=2, col=1,
                       showlegend=True)
 
@@ -267,8 +271,6 @@ def annotate_plot(relayoutData, year_dt, units, opt):
     sum_bez_ee = filtered_df[used_cols].sum()['zap. bez e.e.MWh/h']
     sum_ee = filtered_df[used_cols].sum()[cfg.scen_1_name]
 
-    print('Wywowłanie annotate_plot(relayoutData, year_dt, units, opt)')
-
     return html.Div([
         f"Dla okresu od {pd.to_datetime(start_x).date()} do {pd.to_datetime(end_x).date()} zapotrzebowanie wynosi",
         html.Br(),
@@ -303,8 +305,6 @@ def annotate_residual(relayoutData, residual_dt, units, opt):
 
     # Calculate the sum of the values in the filtered DataFrame
     total_sum = filtered_df.loc[:, cfg.demand_name].sum()
-
-    print('Wywowłanie annotate_residual(relayoutData, residual_dt, units, opt)')
 
     return html.Div([
         f"Dla okresu od {pd.to_datetime(start_x).date()} do {pd.to_datetime(end_x).date()} zapotrzebowanie wynosi: {int(total_sum)} {u_label}",

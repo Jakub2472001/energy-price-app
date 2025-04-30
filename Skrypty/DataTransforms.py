@@ -4,14 +4,13 @@ import config as cfg
 from Main import app
 from dash import html, Input, Output,dash_table, State
 from LoadData import join_data, load_magazyny_df
+
 from SimulateStorage import run_simulation_złożowy, run_simulation_kawerna
-from Skrypty.LoadData import load_rezerwy_data
 
 
-def run_all_years_sim(popyt_ccgt_scen_name, imp_winter_off, podaz_df, zrodla_podazy, storage_investment_scenario, contents): #TODO: DODANE (3)
+
+def run_all_years_sim(popyt_ccgt_scen_name, imp_winter_off, podaz_df, zrodla_podazy, storage_investment_scenario, joined_df, rezerwy_df ): #TODO: (3) + # TODO: (4)!
     print('start run_all_years_sim')
-
-    load_rezerwy_df = pd.DataFrame(contents) #TODO: DODANE (3)
 
     years = np.arange(cfg.start_year, cfg.end_year+1)
 
@@ -24,8 +23,8 @@ def run_all_years_sim(popyt_ccgt_scen_name, imp_winter_off, podaz_df, zrodla_pod
     for y in years:
         magazyny_df = magazyny_dict[y].copy()
 
-        residual, year_df, _= calc_resid_no_callback(podaz_df, popyt_ccgt_scen_name, imp_winter_off, y, zrodla_podazy, load_rezerwy_df) #TODO: DODANE (3)
-        storage_operation, storage_SoC, all_SoC, all_pp, all_residual = calc_year_sim(residual, magazyny_df,profil_dict, percent_full, y)
+        residual, year_df, _= calc_resid_no_callback(podaz_df, popyt_ccgt_scen_name, imp_winter_off, y, zrodla_podazy, joined_df)  #TODO: (3) ???
+        storage_operation, storage_SoC, all_SoC, all_pp, all_residual = calc_year_sim(residual, magazyny_df,profil_dict, percent_full, y, rezerwy_df) # TODO: (4)!
 
         storage_results_dict[y] = pd.concat([all_SoC,all_pp, all_residual], axis=1)
         storage_results_dict[y].loc[:, 'rok'] = storage_results_dict[y].index.year
@@ -62,8 +61,7 @@ def run_all_years_sim(popyt_ccgt_scen_name, imp_winter_off, podaz_df, zrodla_pod
     all_year_dfs_parsed = pd.concat(all_year_dfs, axis=0).reset_index(names = ['rok_auto', cfg.datetime_col_name +'_auto'])
     return yearly_summarry_df, all_gas_demands, pd.concat(storage_results_dict, axis=0).reset_index(names=['rok_auto', cfg.datetime_col_name]), all_year_dfs_parsed
 
-
-def calc_year_sim(residual, magazyny_df, profil_dict, percent_full, year, contents):  #TODO: DODANE (3)
+def calc_year_sim(residual, magazyny_df, profil_dict, percent_full, year, rezerwy_df): # TODO: (4)!
     print('start calc_year_sim')
     residual = pd.Series(residual.set_index(cfg.datetime_col_name)[cfg.demand_name])
     all_SoC = {}
@@ -71,17 +69,15 @@ def calc_year_sim(residual, magazyny_df, profil_dict, percent_full, year, conten
     all_residual = {}
     residual_after_calc = residual.copy()
 
-    load_rezerwy_df = pd.DataFrame(contents) #TODO: DODANE (3)
-
     for name in cfg.mag_calc_order:
         mag = magazyny_df.loc[name]
         if name in cfg.złożowy_names:
             SoC, pp = run_simulation_złożowy(residual_after_calc, mag[cfg.pojemnosc_col], mag[cfg.moc_zatl_col],
-                                             mag[cfg.moc_odb_col], percent_full, name,profil_dict, year, load_rezerwy_df) #TODO: DODANE (3)
+                                             mag[cfg.moc_odb_col], percent_full, name,profil_dict, year, rezerwy_df) # TODO: (4)!
 
         elif name in cfg.kawerna_names:
             SoC, pp = run_simulation_kawerna(residual_after_calc,  mag[cfg.pojemnosc_col], mag[cfg.moc_zatl_col],
-                                             mag[cfg.moc_odb_col], percent_full, name,profil_dict, year, load_rezerwy_df) #TODO: DODANE (3)
+                                             mag[cfg.moc_odb_col], percent_full, name,profil_dict, year, rezerwy_df) # TODO: (4)!
         else:
             raise Exception("Name not foung in mag list or type not defined", name)
 
@@ -99,27 +95,30 @@ def calc_year_sim(residual, magazyny_df, profil_dict, percent_full, year, conten
     return storage_operation, pd.DataFrame(storage_SoC), pd.DataFrame(all_SoC), pd.DataFrame(all_pp), pd.DataFrame(all_residual)
 
 
+
 @app.callback(
-    Output(component_id='residual-calculation', component_property='data'),
-    Output(component_id='year-df-datatable', component_property='data'),
-    Output(component_id='datatable-podaz', component_property='data'),
+    Output('residual-calculation', 'data'),
+    Output('year-df-datatable', 'data'),
+    Output('datatable-podaz', 'data'),
     Input(component_id='year_slider', component_property='value'),
     Input(component_id='datatable-podaz', component_property='data'),
     Input(component_id='scenario-selector', component_property='value'),
     Input(component_id='import-selector', component_property='value'),
     Input(component_id='źródła-selector', component_property='value'),
-    Input(component_id='join_data', component_property='data'),  #TODO: DODANE (1)
+    Input('joined-store', 'data'), #TODO: (3)
 )
-def calculate_residual_y(year, my_podaz_table, selected_scen, imp_winter, values, contents):
+def calculate_residual_y(year, my_podaz_table, selected_scen, imp_winter, values, joined_contents): #TODO: (3)
     print('start calculate_residual_y')
 
-    residual, year_df, podaz_df = calc_resid_no_callback(my_podaz_table,selected_scen, imp_winter, year, values, contents) #TODO: DODANE (1)
+    joined_df = pd.DataFrame(joined_contents) #TODO: (3)
+
+    residual, year_df, podaz_df = calc_resid_no_callback(my_podaz_table,selected_scen, imp_winter, year, values, joined_df) #TODO: (3)
 
     print('done calculating residual')
 
     return residual.to_dict('records'), year_df.to_dict('records'), podaz_df.reset_index(names='źródło').to_dict('records')
 
-def calc_resid_no_callback(my_podaz_table, selected_scen, imp_winter, year, values, contents): #TODO: DODANE (1)
+def calc_resid_no_callback(my_podaz_table, selected_scen, imp_winter, year, values, joined_df): #TODO: (3)
     print('start calc_resid_no_callback')
 
     podaz_df = pd.DataFrame(my_podaz_table).set_index('źródło').loc[values,:]
@@ -133,15 +132,17 @@ def calc_resid_no_callback(my_podaz_table, selected_scen, imp_winter, year, valu
     summer_moc_podazy = podaz_df.loc[summer_sources,:][cfg.base_unit].astype(int).sum()
     winter_moc_podazy = podaz_df.loc[winter_sources,:][cfg.base_unit].astype(int).sum()
 
-    joined = pd.DataFrame(contents)
-    year_df = joined[joined['Rok'] == year].reset_index(names=cfg.datetime_col_name)
-
-    year_df = year_df.drop(columns=[cfg.datetime_col_name]) #TODO: DODANE (1) Ważne !!!
-    year_df = year_df.rename(columns={'dt': cfg.datetime_col_name}) #TODO: DODANE (1) Ważne !!!
-
+    # TODO: (3)
+    year_df = joined_df[joined_df['Rok'] == year].reset_index(names=cfg.datetime_col_name)
+    year_df = year_df.drop(columns=[cfg.datetime_col_name])  # TODO: DODANE Ważne !!!
+    year_df = year_df.rename(columns={'dt': cfg.datetime_col_name})  # TODO: DODANE Ważne !!!
     year_df[cfg.datetime_col_name] = pd.to_datetime(year_df[cfg.datetime_col_name], errors='coerce')
-
     year_df.loc[:, cfg.datetime_col_name] = pd.to_datetime(year_df.loc[:, cfg.datetime_col_name])
+    """
+    year_df = join_data()[join_data()['Rok'] == year].reset_index(names=cfg.datetime_col_name)
+    #year_df = joined_demand[joined_demand['Rok'] == year].reset_index(names = cfg.datetime_col_name)
+    year_df.loc[:, cfg.datetime_col_name] = pd.to_datetime(year_df.loc[:, cfg.datetime_col_name])
+    """
 
     base_podaz_hourly = pd.DataFrame(index = year_df[cfg.datetime_col_name], dtype=float)
     base_podaz_hourly.loc[:, 'month'] = base_podaz_hourly.index.month
@@ -162,12 +163,11 @@ def calc_resid_no_callback(my_podaz_table, selected_scen, imp_winter, year, valu
     return residual, year_df, podaz_df
 
 @app.callback(
-    Output('datatable-magazyny', 'data'),
-    Input(component_id='units-selector', component_property='value'),
-    State(component_id='units-selector', component_property='options'),
-    Input(component_id='year_slider', component_property='value'),
-    Input(component_id='storage-investment-scenario', component_property='value'),
-)
+Output('datatable-magazyny', 'data'),
+Input(component_id='units-selector', component_property='value'),
+State(component_id='units-selector', component_property='options'),
+Input(component_id='year_slider', component_property='value'),
+Input(component_id='storage-investment-scenario', component_property='value'))
 def define_magazyny_table(units, opt, y, storage_investment_scenario):
     print('start define_magazyny_table')
     u_label = [x['label'] for x in opt if x['value'] == units][0]
