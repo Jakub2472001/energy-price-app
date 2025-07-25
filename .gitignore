@@ -1,10 +1,12 @@
 \.venv/
+venv/
 \.dockervenv/
 \.idea/
 Dane/
 Wyniki/
 Dockerfile
 requirements.txt
+.env
 
 *csv
 *xlsx

@@ -1,17 +1,24 @@
 from dash import html, Input, Output, State, dash_table, dcc
-import config as cfg
+from Skrypty import config as cfg
 import numpy as np
 import dash_bootstrap_components as dbc
-from DataTransforms import calculate_residual_y, define_podaz_table, define_magazyny_table
-from LoadData import load_podaz_df
-from DashPlots import plot_podaz_popyt, annotate_plot
-from Main import app
+from Skrypty.Main import app
 import os
 import base64
 from flask import send_from_directory
 import pandas as pd
+import io
+import dash
+from dash import callback_context
 
-from Skrypty.LoadData import join_data, load_rezerwy_data
+from dash.dash_table.Format import Format, Scheme
+from dash_ag_grid import AgGrid
+from datetime import datetime
+from Skrypty.backend.postgres_db import save_df_to_db, load_df_from_db, load_df_from_query
+from dash.exceptions import PreventUpdate
+import json
+
+empty_df = pd.DataFrame(columns=["Rok", "Cena energii [PLN/MWh]", "Cena gazu [PLN/MWh]"])
 
 magazyny_table = html.Div([dash_table.DataTable(
     id='datatable-magazyny',
@@ -55,401 +62,472 @@ app.layout = (
         dcc.Store(id='joined-store'), #TODO: (3)
         dcc.Store(id='rezerwy-store'), #TODO: (4)!
 
+        dcc.Store(id='stored-uploaded-excel', storage_type='session'),
+        dcc.Store(id='db-refresh-trigger', data=0, storage_type='session'),
+
         html.Link(rel='stylesheet', href='/assets/style.css'),
         dcc.Tabs([
-            dcc.Tab(label='Założenia', style={'backgroundColor': '#1e1e1e', 'color': 'white'},
-                    selected_style={'backgroundColor': '#1e1e1e', 'color': 'white', 'borderTop': '4px solid #fec036'},
-                    children=[
-                        dbc.Container([
-                            dbc.Row([
-                                dbc.Col([
-                                    html.H3("Źródła", style={"textAlign": "center", 'color': "#fec036"}),
-                                    dcc.Loading(
-                                        id="loading-podaz-table", type="circle", children=[
-                                            #html.Div(id='output-datatable-podaz', children=define_podaz_table(load_podaz_df()))
-                                            html.Div(id='output-datatable-podaz') # TODO: (1)
-                                        ]
-                                    ),
-                                    html.H3("Magazyny", style={"textAlign": "center", 'color': "#fec036"}),
+            dcc.Tab(label='Dane wejściowe do modelu ze ścieżkami',
+                style={'backgroundColor': '#1e1e1e', 'color': 'white'},
+                selected_style={'backgroundColor': '#1e1e1e', 'color': 'white', 'borderTop': '4px solid #fec036'},
+                children=[
+                    dbc.Container([
+                        html.H3("Wczytaj plik Excel (Parameters)", style={"textAlign": "center", "color": "#fec036"}),
 
-                                    dcc.Upload(
-                                        id='upload-data',
-                                        children=html.Div([
-                                            'Załącz pliki .xlsx ze scenariuszami z listy [bazowy, D1, D2, D3, K1, K2, K3, M1]',
-                                        ]),
-                                        style={
-                                            'textAlign': 'center',
-                                            'margin': '10px'
-                                        },
-                                        multiple=True
-                                    ),
-                                    html.Div(id='output-div'),
-                                    html.Div(id='output-datatable'),
-
-                                    dcc.Loading(
-                                        id="loading-magazyny-table", type="circle", children=[
-                                            html.Div(id='output-datatable-magazyny', children=magazyny_table)
-                                        ]
-                                    ),
-
-                                    html.Button('Dodaj magazyn', id='editing-rows-button', n_clicks=0),
-                                    dcc.Store(id='residual-calculation'),
-                                    dcc.Store(id='year-df-datatable'),
-                                    dcc.Store(id="results-datatable"),
-                                ], width=3, style={"backgroundColor": "#1e1e1e"}),
-
-                                dbc.Col([
-                                    dcc.Upload(
-                                        id='upload-main-data',
-                                        children=html.Div([
-                                            'Załącz plik .xlsx z założeniami',
-                                        ]),
-                                        style={
-                                            'textAlign': 'center',
-                                            'margin': '10px'
-                                        },
-                                            multiple=True
-                                    ),
-                                    html.Div(id='output-div-main'),
-
-                                    dcc.Dropdown(options=[
-                                        {'label': 'Wysokie zapotrzebowanie w e.e.', 'value': cfg.scen_1_name},
-                                        {'label': 'Niskie zapotrzebowanie w e.e.', 'value': cfg.scen_2_name},
-                                        {'label': 'S3 zapotrzebowanie w e.e.', 'value': cfg.scen_3_name},
-                                    ],
-                                        value=cfg.scen_1_name, id='scenario-selector'),
-
-                                    dcc.Dropdown(options=[
-                                        {'label': 'Import w okresie zimowym', 'value': True},
-                                        {'label': 'Brak importu w okresie zimowym', 'value': False},
-                                    ],
-                                        value=False, id='import-selector'),
-
-                                    dcc.Dropdown(id='storage-investment-scenario', options=[], value=None),  # Dropdown z plikami
-
-                                    # TODO: (2)
-                                    dcc.Dropdown(id='źródła-selector', options=[], multi=True, value=[], placeholder="Wybierz źródła"),
-
-
-                                    #dcc.Dropdown(options=[
-                                    #    {'label': c, 'value': c} for c in load_podaz_df()['źródło'] if
-                                    #    c not in ['UA', 'SK (Vyrawa)']],
-                                    #    multi=True, value=[c for c in load_podaz_df()['źródło']], id='źródła-selector'),
-
-
-                                    html.H3("Zródła gazu i zapotrzebowanie",
-                                            style={"textAlign": "center", "color": "#fec036"}),
-                                    dcc.Slider(id='year_slider', value=cfg.start_year, min=cfg.start_year,
-                                               max=cfg.end_year, step=1,
-                                               marks={int(y): str(int(y)) for y in
-                                                      np.arange(cfg.start_year, cfg.end_year + 1)}),
-                                    dcc.Dropdown(options=[
-                                        {'label': 'GWh', 'value': 1e3},
-                                        {'label': 'mln m3', 'value': cfg.m3_to_kWh * 1e3},
-                                    ],
-                                        value=1e3, id='units-selector'),
-
-                                    dcc.Loading(
-                                        id="loading-podaz-popyt-figure",
-                                        type="circle",
-                                        children=[dcc.Graph(id="podaz-popyt-figure")]
-                                    ),
-                                    dcc.Loading(
-                                        id="loading-residual-figure",
-                                        type="circle",
-                                        children=[dcc.Graph(id="residual-figure")]
-                                    ),
-                                    html.Div(id='output-resid-container', style={'margin-top': '20px'}),
-                                ], width=9, style={"backgroundColor": "#2b2b2b"}),
-                            ])
-                        ]),
-
-                    ]),
-
-            dcc.Tab(label='Analiza wystarczalności 2025-2040', style={'backgroundColor': '#1e1e1e', 'color': 'white'},
-                    selected_style={'backgroundColor': '#1e1e1e', 'color': 'white', 'borderTop': '4px solid #fec036'},
-                    children=[
-                        dbc.Container([
-                            dbc.Row([
-                                html.Button('Wykonaj obliczenia', id='run-all_year-calc', n_clicks=0),
+                        dcc.Upload(
+                            id='upload-energy-prices',
+                            children=html.Div([
+                                'Przeciągnij i upuść lub kliknij, aby załadować plik .xlsx z danymi wejściowymi'
                             ]),
-                            dbc.Row([
-                                html.H3("Bilans energii", style={"textAlign": "center", 'color': "#fec036"}),
-                                dcc.Loading(
-                                    id="loading-year-barplots",
-                                    type="circle",
-                                    children=[dcc.Graph(id="year-barplots-figure")]
-                                ),
-                            ]),
-                            dbc.Row([
-                                html.H3("Bilans mocy", style={"textAlign": "center", 'color': "#fec036"}),
-                                dcc.Loading(
-                                    id="loading-year-moce",
-                                    type="circle",
-                                    children=[dcc.Graph(id="year-moce-figure")]
-                                ),
-                            ]),
-                            dbc.Row([
-                                dcc.Download(id="download-ts-results-csv"),
-                                dcc.Download(id="download-yearly-results-xlsx"),
-                            ])
-                        ])
-                    ]),
+                            style={
+                                'textAlign': 'center',
+                                'margin': '10px',
+                                'padding': '10px',
+                                'border': '1px dashed #fec036',
+                                'color': 'white',
+                                'backgroundColor': '#2b2b2b',
+                            },
+                            multiple=False
+                        ),
 
-            dcc.Tab(label='Godzinowa symulacja magazynów', style={'backgroundColor': '#1e1e1e', 'color': 'white'},
-                    selected_style={'backgroundColor': '#1e1e1e', 'color': 'white', 'borderTop': '4px solid #fec036'},
-                    children=[
-                        dbc.Container([
-                            dbc.Row(dcc.Slider(id='year-slider-secondary', value=cfg.start_year, min=cfg.start_year,
-                                               max=cfg.end_year, step=1, marks={int(y): str(int(y)) for y in
-                                                                                  np.arange(cfg.start_year, cfg.end_year + 1)}),
-                                    ),
-                            dbc.Row([
-                                html.H3("Suma pracy i stanu naładowania magazynów", style={"textAlign": "center", 'color': "#fec036"}),
-                                dcc.Loading(
-                                    id="loading-opt-storage-figure",
-                                    type="circle",
-                                    children=[dcc.Graph(id="opt-storage-figure")]
-                                ),
-                                html.H3("Magazyny złożowe", style={"textAlign": "center", 'color': "#fec036"}),
-                                dcc.Loading(
-                                    id="loading-sanok-storage-figure",
-                                    type="circle",
-                                    children=[dcc.Graph(id="sanok-storage-figure")]
-                                ),
-                                dcc.Loading(
-                                    id="loading-wierzchowice-storage-figure",
-                                    type="circle",
-                                    children=[dcc.Graph(id="wierzchowice-storage-figure")]
-                                ),
-                                html.H3("Magazyny kawernowe", style={"textAlign": "center", 'color': "#fec036"}),
-                                dcc.Loading(
-                                    id="loading-kosakowo-storage-figure",
-                                    type="circle",
-                                    children=[dcc.Graph(id="kosakowo-storage-figure")]
-                                ),
-                                dcc.Loading(
-                                    id="loading-mogilno-storage-figure",
-                                    type="circle",
-                                    children=[dcc.Graph(id="mogilno-storage-figure")]
-                                ),
-                                dcc.Loading(
-                                    id="loading-damaslawek-storage-figure",
-                                    type="circle",
-                                    children=[dcc.Graph(id="damasławek-storage-figure")]
-                                )
-                            ])
-                        ])
+                        dcc.Interval(id='interval-startup', interval=1000, n_intervals=0, max_intervals=1),
+
+                        html.Button("📥 Pobierz załadowany plik Excel", id='download-entire-excel', style={'marginBottom': '10px'}),
+                        dcc.Download(id='download-entire-excel-data'),
+
+                        html.Hr(),
+                        html.H4("Arkusz: Ceny 2020–2050", style={"color": "#fec036"}),
+                        #html.Div(id='output-sheet-ceny'),
+                        dcc.Loading(
+                            id="loading-output-sheet-ceny",
+                            type="circle",
+                            children=html.Div(id='output-sheet-ceny')
+                        ),
+
+                        html.Hr(),
+                        html.H4("Arkusz: Cenotworstwo", style={"color": "#fec036"}),
+                        #html.Div(id='output-sheet-cenotworstwo'),
+                        dcc.Loading(
+                            id="output-sheet-cenotworstwo",
+                            type="circle",
+                            children=html.Div(id='output-sheet-cenotworstwo')
+                        ),
+
+                        html.Hr(),
+                        html.H4("Arkusz: Energy_mix", style={"color": "#fec036"}),
+                        #html.Div(id='output-sheet-energy-mix'),
+                        dcc.Loading(
+                            id="loading-output-sheet-energy-mix",
+                            type="circle",
+                            children=html.Div(id='output-sheet-energy-mix')
+                        ),
+
+                        html.Hr(),
+                        html.H4("Arkusz: Do ebitda", style={"color": "#fec036"}),
+                        #html.Div(id='output-sheet-do-ebitda'),
+                        dcc.Loading(
+                            id="loading-output-sheet-do-ebitda",
+                            type="circle",
+                            children=html.Div(id='output-sheet-do-ebitda')
+                        ),
+
+                        html.Hr(),
+                        html.H4("Arkusz: Zmienne sterujące", style={"color": "#fec036"}),
+                        #html.Div(id='output-sheet-zmienne-sterujace'),
+                        dcc.Loading(
+                            id="loading-output-sheet-zmienne-sterujace",
+                            type="circle",
+                            children=html.Div(id='output-sheet-zmienne-sterujace')
+                        ),
+                        html.Hr(),
                     ])
+                ]),
+
+            dcc.Tab(label='Historia zmian', style={'backgroundColor': '#1e1e1e', 'color': 'white'},
+                    selected_style={'backgroundColor': '#1e1e1e', 'color': 'white', 'borderTop': '4px solid #fec036'}, children=[
+                html.Div([
+                    html.H3("Historia zmian danych", style={"textAlign": "center", "color": "#fec036"}),
+                    dcc.Dropdown(
+                        id='history-table-selector',
+                        options=[
+                            {'label': 'Ceny 2020–2050', 'value': 'ceny_history'},
+                            {'label': 'Cenotworstwo', 'value': 'cenotworstwo_history'},
+                            {'label': 'Energy_mix', 'value': 'energy_mix_history'},
+                            {'label': 'Do ebitda', 'value': 'do_ebitda_history'},
+                            {'label': 'Zmienne sterujące', 'value': 'zmienne_sterujace_history'},
+                        ],
+                        value='cenotworstwo_history'
+                    ),
+                    html.Br(),
+                    html.Button("Załaduj historię", id="load-history-btn", n_clicks=0),
+                    html.Br(),
+                    dcc.Loading(
+                        id="loading-history-table",
+                        type="circle",
+                        children=html.Div(id='history-table-output')
+                    )
+                ])
+            ])
+
         ])
     ])
 )
 
 
-def get_available_files(data_folder):
-    available_files = ["bazowy.xlsx", "D1.xlsx", "D2.xlsx", "D3.xlsx", "K1.xlsx", "K2.xlsx", "K3.xlsx", "M1.xlsx"]
-    existing_files = [f for f in available_files if f in os.listdir(data_folder)]
-    return existing_files
-
-
 @app.callback(
-    Output('output-div', 'children'),
-    Output('uploaded-files-store', 'data'),
-    Output('storage-investment-scenario', 'options'),
-    Output('storage-investment-scenario', 'value'),
-    Input('upload-data', 'contents'),
-    State('upload-data', 'filename'),
-    State('upload-data', 'last_modified'))
-def display_uploaded_file(list_of_contents, list_of_names, list_of_dates):
-    data_subfolder_scenarios = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane/Usage_Scenarios'))
+    Output('output-sheet-ceny', 'children'),
+    Input('interval-startup', 'n_intervals'),
+    Input('db-refresh-trigger', 'data'),
+    prevent_initial_call=False
+)
+def update_ceny_from_db(_, __):
+    try:
+        df = load_df_from_db("ceny_2020_2050")
+    except Exception as e:
+        return html.Div(f"❌ Błąd podczas ładowania z bazy danych: {str(e)}")
 
-    if list_of_contents is not None and list_of_names is not None:
-
-        for filename in os.listdir(data_subfolder_scenarios):
-            file_path = os.path.join(data_subfolder_scenarios, filename)
-            if os.path.isfile(file_path):
-                os.remove(file_path)
-
-        saved_files = []
-
-        for content, name in zip(list_of_contents, list_of_names):
-            content_type, content_string = content.split(',')
-            decoded = base64.b64decode(content_string)
-
-            file_path = os.path.join(data_subfolder_scenarios, name)
-            with open(file_path, 'wb') as f:
-                f.write(decoded)
-
-            saved_files.append(name)
-
-        options = [{'label': name.replace('.xlsx', ''), 'value': name} for name in sorted(saved_files, key=str.lower)]
-
-        return (
-            [html.A(name, href=f'/download_scenarios/{name}', style={
-                'border': '1px dashed #007eff',
-                'padding': '5px',
-                'borderRadius': '5px',
-                'backgroundColor': '#2b2b2b',
-                'fontSize': '14px',
-                'display': 'block',
-                'color': 'white',
-                'textDecoration': 'underline',
-            }) for name in saved_files],
-            saved_files,
-            options,
-            options[0]['value'] if options else None
-        )
-
-    existing_files = get_available_files(data_subfolder_scenarios)
-
-    if existing_files:
-        return (
-            [html.A(name, href=f'/download_scenarios/{name}', style={
-                'border': '1px dashed #007eff',
-                'padding': '5px',
-                'borderRadius': '5px',
-                'backgroundColor': '#2b2b2b',
-                'fontSize': '14px',
-                'display': 'block',
-                'color': 'white',
-                'textDecoration': 'underline',
-            }) for name in existing_files],
-            [],
-            [{'label': name.replace('.xlsx', ''), 'value': name} for name in existing_files],
-            existing_files[0] if existing_files else None
-        )
-
-    return (
-        html.H4("Nie załączono żadnego pliku.", style={
-            'border': '1px dashed #007eff',
-            'padding': '5px',
-            'borderRadius': '5px',
-            'backgroundColor': '#2b2b2b',
-            'fontSize': '12px',
-        }),
-        [],
-        [],
-        None
+    return dash_table.DataTable(
+        id='energy-parameters-table',
+        data=df.to_dict('records'),
+        columns=[
+            {"name": i, "id": i,
+             "type": "numeric",
+             "format": Format(precision=2, scheme=Scheme.fixed)}
+            if df[i].dtype.kind in 'fi' else {"name": i, "id": i}
+            for i in df.columns
+        ],
+        style_table={'overflowX': 'auto'},
+        style_cell={'backgroundColor': '#2b2b2b', 'color': 'white', 'textAlign': 'center'},
+        style_header={'backgroundColor': '#484848', 'fontWeight': 'bold', 'color': '#fec036'},
+        editable=False,
+        row_deletable=False,
     )
 
 
-@app.server.route('/download_scenarios/<filename>')
-def download_file_scenarios(filename):
-    data_subfolder_scenarios = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane/Usage_Scenarios'))
-    return send_from_directory(data_subfolder_scenarios, filename, as_attachment=True)
-
-
 @app.callback(
+    Output('output-sheet-cenotworstwo', 'children'),
+    Input('interval-startup', 'n_intervals'),
+    Input('db-refresh-trigger', 'data'),
+    prevent_initial_call=False
+)
+def update_cenotworstwo_from_db(_, __):
+    try:
+        df = load_df_from_db("cenotworstwo")
+    except Exception as e:
+        return html.Div(f"❌ Błąd podczas ładowania z bazy danych: {str(e)}")
 
-    Output('rezerwy-store', 'data'),  # TODO: (4)!
-    Output('joined-store', 'data'),  # TODO: (3)
-    Output('podaz-store', 'data'),  # TODO: (2)
-    Output('output-datatable-podaz', 'children'), # TODO: (1)
-    Output('output-div-main', 'children'),
-    Input('upload-main-data', 'contents'),
-    State('upload-main-data', 'filename'),
-    State('upload-main-data', 'last_modified'))
-def display_uploaded_main_file(list_of_contents, list_of_names, list_of_dates):
-    data_subfolder = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane/Usage'))
-
-    if isinstance(list_of_names, str):
-        list_of_names = [list_of_names]
-
-    if list_of_contents is not None and list_of_names is not None and len(list_of_names) > 0:
-        for filename in os.listdir(data_subfolder):
-            file_path = os.path.join(data_subfolder, filename)
-            if os.path.isfile(file_path):
-                os.remove(file_path)
-
-        saved_files = []
-
-        for content, name in zip(list_of_contents, list_of_names):
-            content_type, content_string = content.split(',')
-            decoded = base64.b64decode(content_string)
-
-            file_path = os.path.join(data_subfolder, name)
-            with open(file_path, 'wb') as f:
-                f.write(decoded)
-            saved_files.append(name)
-
-    """
-        return (
-            [html.A(name, href=f'/download/{name}', style={
-                'border': '1px dashed #007eff',
-                'padding': '5px',
-                'borderRadius': '5px',
-                'backgroundColor': '#2b2b2b',
-                'fontSize': '14px',
-                'display': 'block',
-                'color': 'white',
-                'textDecoration': 'underline',
-            }) for name in saved_files]
-        )
-    """
-
-    existing_files = [f for f in os.listdir(data_subfolder) if "Model pracy PMG_założenia" in f]
-
-    podaz_df = load_podaz_df() # TODO: (1)
-    podaz_table = define_podaz_table(podaz_df) # TODO: (1)
-
-    joined_df = join_data() # TODO: (3)
-
-    rezerwy_df = load_rezerwy_data() # TODO: (4)!
-
-    if existing_files:
-        return (
-            rezerwy_df.to_dict('records'), # TODO: (4)!
-            joined_df.to_dict('records'), # TODO: (3)
-            podaz_df.to_dict('records'), # TODO: (2)
-            podaz_table, # TODO: (1)
-            [html.A(name, href=f'/download/{name}', style={
-                'border': '1px dashed #007eff',
-                'padding': '5px',
-                'borderRadius': '5px',
-                'backgroundColor': '#2b2b2b',
-                'fontSize': '14px',
-                'display': 'block',
-                'color': 'white',
-                'textDecoration': 'underline',
-            }) for name in existing_files]
-        )
-
-    return (
-        rezerwy_df.to_dict('records'),  # TODO: (4)!
-        joined_df.to_dict('records'),  # TODO: (3)
-        podaz_df.to_dict('records'), # TODO: (2)
-        podaz_table, # TODO: (1)
-        html.H4("Nie załączono żadnego pliku.", style={
-            'border': '1px dashed #007eff',
-            'padding': '5px',
-            'borderRadius': '5px',
+    return dash_table.DataTable(
+        id='energy-cenotworstwo-table',
+        data=df.to_dict('records'),
+        columns=[
+            {"name": i, "id": i,
+             "type": "numeric",
+             "format": Format(precision=2, scheme=Scheme.fixed)}
+            if df[i].dtype.kind in 'fi' else {"name": i, "id": i}
+            for i in df.columns
+        ],
+        style_table={'overflowX': 'auto'},
+        style_cell={
             'backgroundColor': '#2b2b2b',
-            'fontSize': '12px',
-        }),
-        [],
+            'color': 'white',
+            'textAlign': 'center'
+        },
+        style_header={
+            'backgroundColor': '#484848',
+            'fontWeight': 'bold',
+            'color': '#fec036'
+        },
+        editable=False,
+        row_deletable=False,
     )
 
 
-@app.server.route('/download/<filename>')
-def download_file(filename):
-    data_subfolder = os.path.abspath(os.path.join(os.path.dirname(__file__), '../Dane/Usage'))
-    return send_from_directory(data_subfolder, filename, as_attachment=True)
-
-# TODO: (2)
 @app.callback(
-    Output('źródła-selector', 'options'),
-    Output('źródła-selector', 'value'),
-    Input('podaz-store', 'data'))
-def update_dropdown_options(podaz_data):
-    if podaz_data is None:
-        return [], []
+    Output('output-sheet-energy-mix', 'children'),
+    Input('interval-startup', 'n_intervals'),
+    Input('db-refresh-trigger', 'data'),
+    prevent_initial_call=False
+)
+def update_energy_mix_from_db(_, __):
+    try:
+        df = load_df_from_db("energy_mix")
+    except Exception as e:
+        return html.Div(f"❌ Błąd podczas ładowania z bazy danych: {str(e)}")
 
-    podaz_df = pd.DataFrame(podaz_data)
+    return dash_table.DataTable(
+        id='energy-energy_mix-table',
+        data=df.to_dict('records'),
+        columns=[
+            {"name": i, "id": i,
+             "type": "numeric",
+             "format": Format(precision=2, scheme=Scheme.fixed)}
+            if df[i].dtype.kind in 'fi' else {"name": i, "id": i}
+            for i in df.columns
+        ],
+        style_table={'overflowX': 'auto'},
+        style_cell={
+            'backgroundColor': '#2b2b2b',
+            'color': 'white',
+            'textAlign': 'center'
+        },
+        style_header={
+            'backgroundColor': '#484848',
+            'fontWeight': 'bold',
+            'color': '#fec036'
+        },
+        editable=False,
+        row_deletable=False,
+    )
 
-    options = [{'label': c, 'value': c} for c in podaz_df['źródło'] if c not in ['UA', 'SK (Vyrawa)']]
-    value = [c for c in podaz_df['źródło']]
 
-    return options, value
+@app.callback(
+    Output('output-sheet-do-ebitda', 'children'),
+    Input('interval-startup', 'n_intervals'),
+    Input('db-refresh-trigger', 'data'),
+    prevent_initial_call=False
+)
+def update_do_ebitda_from_db(_, __):
+    try:
+        df = load_df_from_db("do_ebitda")
+    except Exception as e:
+        return html.Div(f"❌ Błąd podczas ładowania z bazy danych: {str(e)}")
+
+    return dash_table.DataTable(
+        id='energy-do_ebitda-table',
+        data=df.to_dict('records'),
+        columns=[
+            {"name": i, "id": i,
+             "type": "numeric",
+             "format": Format(precision=2, scheme=Scheme.fixed)}
+            if df[i].dtype.kind in 'fi' else {"name": i, "id": i}
+            for i in df.columns
+        ],
+        style_table={'overflowX': 'auto'},
+        style_cell={
+            'backgroundColor': '#2b2b2b',
+            'color': 'white',
+            'textAlign': 'center'
+        },
+        style_header={
+            'backgroundColor': '#484848',
+            'fontWeight': 'bold',
+            'color': '#fec036'
+        },
+        editable=False,
+        row_deletable=False,
+    )
+
+
+@app.callback(
+    Output('output-sheet-zmienne-sterujace', 'children'),
+    Input('interval-startup', 'n_intervals'),
+    Input('db-refresh-trigger', 'data'),
+    prevent_initial_call=False
+)
+def update_zmienne_sterujace_from_db(_, __):
+    try:
+        df = load_df_from_db("zmienne_sterujace")
+    except Exception as e:
+        return html.Div(f"❌ Błąd podczas ładowania z bazy danych: {str(e)}")
+
+    return dash_table.DataTable(
+        id='energy-zmienne_sterujace-table',
+        data=df.to_dict('records'),
+        columns=[
+            {"name": i, "id": i,
+             "type": "numeric",
+             "format": Format(precision=2, scheme=Scheme.fixed)}
+            if df[i].dtype.kind in 'fi' else {"name": i, "id": i}
+            for i in df.columns
+        ],
+        style_table={'overflowX': 'auto'},
+        style_cell={
+            'backgroundColor': '#2b2b2b',
+            'color': 'white',
+            'textAlign': 'center'
+        },
+        style_header={
+            'backgroundColor': '#484848',
+            'fontWeight': 'bold',
+            'color': '#fec036'
+        },
+        editable=False,
+        row_deletable=False,
+    )
+
+
+@app.callback(
+    Output("download-entire-excel-data", "data"),
+    Input("download-entire-excel", "n_clicks"),
+    State("stored-uploaded-excel", "data"),
+    prevent_initial_call=True,
+)
+def download_entire_excel(n_clicks, stored_base64_data):
+    if not stored_base64_data:
+        raise dash.exceptions.PreventUpdate
+
+    decoded_bytes = base64.b64decode(stored_base64_data)
+    timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M")
+    filename = f"Zaladowany_plik_{timestamp}.xlsx"
+
+    return dcc.send_bytes(lambda buffer: buffer.write(decoded_bytes), filename=filename)
+
+
+@app.callback(
+    Output('db-refresh-trigger', 'data'),
+    Input('upload-energy-prices', 'contents'),
+    State('upload-energy-prices', 'filename'),
+    State('db-refresh-trigger', 'data')
+)
+def handle_excel_upload(contents, filename, refresh_state):
+    if contents is None:
+        raise dash.exceptions.PreventUpdate
+
+    content_type, content_string = contents.split(',')
+    decoded = base64.b64decode(content_string)
+
+    try:
+        xls = pd.ExcelFile(io.BytesIO(decoded))
+
+        df_ceny = pd.read_excel(xls, sheet_name="Ceny 2020-2050")
+        df_cenotworstwo = pd.read_excel(xls, sheet_name="Cenotworstwo")
+        df_mix = pd.read_excel(xls, sheet_name="Energy_mix")
+        df_do_ebitda = pd.read_excel(xls, sheet_name="do ebitda")
+        df_zmienne_sterujace = pd.read_excel(xls, sheet_name="zmienne sterujące")
+
+        # Walidacja (opcjonalnie twarde asserty)
+
+        save_df_to_db(df_ceny, "ceny_2020_2050")
+        save_df_to_db(df_cenotworstwo, "cenotworstwo")
+        save_df_to_db(df_mix, "energy_mix")
+        save_df_to_db(df_do_ebitda, "do_ebitda")
+        save_df_to_db(df_zmienne_sterujace, "zmienne_sterujace")
+
+        return refresh_state + 1  # trigger refresh
+
+    except Exception as e:
+        print(f"Błąd: {str(e)}")
+        raise dash.exceptions.PreventUpdate
+
+
+@app.callback(
+    Output('stored-uploaded-excel', 'data'),
+    Input('upload-energy-prices', 'contents'),
+)
+def store_uploaded_file(contents):
+    if contents is None:
+        raise dash.exceptions.PreventUpdate
+
+    try:
+        _, content_string = contents.split(',')
+        return content_string
+    except Exception as e:
+        print(f"❌ Błąd przy zapisywaniu pliku do Store: {e}")
+        raise dash.exceptions.PreventUpdate
+
+
+
+@app.callback(
+    Output('history-table-output', 'children'),
+    Input('load-history-btn', 'n_clicks'),
+    State('history-table-selector', 'value'),
+)
+def load_history(n_clicks, table_name):
+    if n_clicks == 0:
+        raise dash.exceptions.PreventUpdate
+
+    # Proste zapytanie bez dodatkowych filtrów
+    query = f"""
+        SELECT *
+        FROM {table_name}
+        ORDER BY changed_at DESC
+    """
+
+    try:
+        df = load_df_from_query(query)
+    except Exception as e:
+        return html.Div(f"❌ Błąd podczas ładowania historii: {e}")
+
+    if df.empty:
+        return html.Div("Brak wyników.")
+
+    # Obsługa historii cenotworstwa (parsowanie JSON)
+    if table_name == 'cenotworstwo_history' and "old_data" in df.columns:
+        try:
+            def try_parse(x):
+                if isinstance(x, str):
+                    cleaned = x.replace('""', '"')
+                    return json.loads(cleaned)
+                elif isinstance(x, dict):
+                    return x
+                else:
+                    return None
+
+            df["old_data_parsed"] = df["old_data"].apply(try_parse)
+            df = df[df["old_data_parsed"].notnull()]
+            old_data_expanded = pd.json_normalize(df["old_data_parsed"])
+            df = pd.concat([df.drop(columns=["old_data", "old_data_parsed"]), old_data_expanded], axis=1)
+
+            # Uporządkuj kolumny
+            meta_cols = ["id", "changed_at", "changed_by", "action_type"]
+            fixed_cols = ["jednostka", "Dodatki do cenotwórstwa w rozbiciu na lata"]
+            year_cols = [str(y) for y in range(2022, 2061)]
+            desired_order = meta_cols + fixed_cols + [col for col in year_cols if col in df.columns]
+            df = df[[col for col in desired_order if col in df.columns]]
+
+            for col in year_cols:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').round(2)
+
+        except Exception as e:
+            return html.Div(f"❌ Błąd przy przetwarzaniu kolumny 'old_data': {e}")
+
+    # Tabela wyjściowa
+    return dash_table.DataTable(
+        data=df.to_dict('records'),
+        columns=[{"name": i, "id": i} for i in df.columns],
+        style_table={'overflowX': 'auto', 'maxWidth': '100%'},
+        style_cell={
+            'backgroundColor': '#2b2b2b',
+            'color': 'white',
+            'textAlign': 'center',
+            'whiteSpace': 'normal',
+            'wordBreak': 'break-word',
+            'minWidth': '25px',
+            'maxWidth': '200px',
+            'fontSize': '10px',    
+            'padding': '1px', 
+        },
+        style_cell_conditional=[
+            {
+                'if': {'column_id': 'Dodatki do cenotwórstwa w rozbiciu na lata'},
+                'textAlign': 'left',
+                'minWidth': '180px',
+                'maxWidth': '600px',
+                'whiteSpace': 'normal',
+            },
+            {
+                'if': {'column_id': 'changed_at'},
+                'minWidth': '100px',
+                'maxWidth': '150px',
+            },
+            {
+                'if': {'column_id': 'changed_by'},
+                'minWidth': '100px',
+                'maxWidth': '150px',
+            },
+        ],
+        style_data={'height': '16px', 'lineHeight': '8px'},
+        style_header={
+            'backgroundColor': '#484848',
+            'fontWeight': 'bold',
+            'color': '#fec036',
+            'textAlign': 'center',
+            'fontSize': '9px', 
+            'padding': '1px', 
+        },
+    )
+
 
 
 
